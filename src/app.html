@@ -132,6 +132,7 @@ const latin=s=>s.replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replac
 function toNum(v){ if(v==null) return null; let s=latin(String(v).trim()).replace(/^\u2212/,'-').replace(/^\+/,'').replace(/\s?[%٪]$/,'');
   if(/^-?\d{1,3}([,٬]\d{3})+(\.\d+)?$/.test(s)) s=s.replace(/[,٬]/g,''); else if(/^-?\d+,\d+$/.test(s)) s=s.replace(',','.');
   if(!/^-?\d+(\.\d+)?$/.test(s)) return null; return +s; }
+const amin=a=>{ let m=Infinity; for(const x of a) if(x<m) m=x; return m; }, amax=a=>{ let m=-Infinity; for(const x of a) if(x>m) m=x; return m; };
 function toast(m){ const t=$('#toast'); t.textContent=m; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,2600); }
 
 /* ============ statistics engine ============ */
@@ -202,7 +203,7 @@ function autoType(c){ const all=c.raw.filter(v=>v!==''); c.pii=piiKind(c.name,al
   const [best,bs]=bestFam(vals);
   if(bs>=.9&&dist>=2){ c.fam=best; return setType(c,'scale'); }
   const nums=vals.map(toNum).filter(x=>x!=null);
-  if(nums.length&&nums.length/n>=.95){ const ints=nums.every(Number.isInteger),mn=Math.min(...nums),mx=Math.max(...nums),nd=new Set(nums).size,uniq=nd===nums.length;
+  if(nums.length&&nums.length/n>=.95){ const ints=nums.every(Number.isInteger),mn=amin(nums),mx=amax(nums),nd=new Set(nums).size,uniq=nd===nums.length;
     const seq=uniq&&ints&&nums.length>=10&&mx-mn===nums.length-1;                                // 1,2,3… row counters
     if(/^(id|#|م|رقم|رقم الاستجابة|رقم المستجيب|respondent ?id|response ?id)$/i.test(c.name.trim())||seq||(uniq&&(/(^|[^a-z])id($|[^a-z])|معرف|معرّف|رقم\s+(ال)?(موظف|طالب|ملف|عضوية|وظيفي|جامعي|مستجيب|استجابة)|الرقم\s+(الوظيفي|الجامعي)/i.test(c.name)||/[a-z]ID$/.test(c.name)))) return setType(c,'id');
     if(ints&&mn>=0&&mx<=10&&((mn===0&&mx===10)||(mx>7&&NPS_RX.test(c.name)))) return setType(c,'nps');
@@ -219,9 +220,9 @@ function setType(c,t){ c.type=t; c.num=null; c.unmapped=0;
   if(t==='scale'||t==='numeric'||t==='nps'){ const fam=t==='scale'?c.fam:null;
     c.num=c.raw.map(v=>{ if(v==='') return null; const x=(fam&&fam.map[AR_NORM(v)])||toNum(v); if(x==null&&!NA_TOKENS.has(v)) c.unmapped++; return x; });
     const xs=c.num.filter(x=>x!=null);
-    if(t==='scale'){ const mx=xs.length?Math.max(...xs):5,mn=xs.length?Math.min(...xs):1; c.lo=fam?1:(mn<1?0:1); c.obs=Math.ceil(mx); c.hi=fam?5:Math.max(c.obs,c.lo+1); } } }
+    if(t==='scale'){ const mx=xs.length?amax(xs):5,mn=xs.length?amin(xs):1; c.lo=fam?1:(mn<1?0:1); c.obs=Math.ceil(mx); c.hi=fam?5:Math.max(c.obs,c.lo+1); } } }
 // Can this column be shown as an ordinal scale? Integers only, at most 11 points.
-function scaleOk(c){ const vs=c.raw.filter(v=>v!==''&&!NA_TOKENS.has(v)); if(bestFam(vs)[1]>=.5) return true; const xs=vs.map(toNum).filter(x=>x!=null); return xs.length>0&&xs.every(Number.isInteger)&&Math.min(...xs)>=0&&Math.max(...xs)<=10; }
+function scaleOk(c){ const vs=c.raw.filter(v=>v!==''&&!NA_TOKENS.has(v)); if(bestFam(vs)[1]>=.5) return true; const xs=vs.map(toNum).filter(x=>x!=null); return xs.length>0&&xs.every(Number.isInteger)&&amin(xs)>=0&&amax(xs)<=10; }
 const vals=c=>c.num?c.num.filter(x=>x!=null):c.raw.filter(v=>v!=='');
 const byType=(...t)=>S.cols.filter(c=>t.includes(c.type));
 function loadTable(rows,name,sample,keep){ MODS.forEach(m=>{ const r=modCall(m,'preprocess',rows,name); if(Array.isArray(r)) rows=r; }); rows=rows.filter(r=>r&&r.some(v=>v!=null&&String(v).trim()!=='')); if(rows.length<3){ toast('الملف لا يحتوي صفوفاً كافية: نحتاج صف عناوين وصفّي بيانات على الأقل'); return; }
@@ -241,9 +242,9 @@ function readFile(file){ const ext=(file.name.match(/\.([^.]+)$/)||['',''])[1].t
     if(ext==='docx'||ext==='pdf'){ busy('جارٍ قراءة المستند…'); let d; try{ d=await (ext==='pdf'?readPdf(new Uint8Array(r.result),file.name):readDocx(r.result,file.name)); }catch(e){ console.error(e); render(); toast(e&&e.message==='lib'?'تعذّر تحميل مكتبة القراءة. تحقق من الاتصال بالإنترنت':e&&e.name==='PasswordException'?'الملف محمي بكلمة مرور':'تعذّرت قراءة المستند. قد يكون تالفاً'); return; }
       if(!d.blocks.length&&!d.tables.length&&!(d.pages)){ render(); toast('المستند فارغ'); return; } loadDoc(d); }
     else if(bin){ if(!window.XLSX){ toast('مكتبة Excel لم تُحمَّل. احفظ الملف بصيغة CSV وأعد المحاولة'); return; } const wb=XLSX.read(r.result,{type:'array'}),sheets={}; wb.SheetNames.forEach(n=>{ const rows=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:'',raw:false}).filter(x=>x.some(v=>String(v).trim()!=='')); if(rows.length>=3) sheets[n]=rows; });
-      const names=Object.keys(sheets); if(!names.length){ toast('لا ورقة في الملف فيها صف عناوين وصفّا بيانات على الأقل'); return; } S.book={name:file.name,sheets,cur:names[0]}; loadTable(tableFrom(sheets[names[0]]),file.name,false,true); }
+      const names=Object.keys(sheets); if(!names.length){ toast('لا ورقة في الملف فيها صف عناوين وصفّا بيانات على الأقل'); return; } S.book={name:file.name,sheets,cur:names[0]}; busy('جارٍ تحليل الجدول…'); await new Promise(z=>setTimeout(z,30)); loadTable(tableFrom(sheets[names[0]]),file.name,false,true); }
     else{ const text=r.result,first=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(l=>l.trim()).slice(0,6),dl=['\t',';',','].map(d=>first.map(l=>l.split(d).length)).find(c=>c.length>=2&&c[0]>1&&c.every(x=>x===c[0]));
-      if(ext==='csv'||ext==='tsv'||dl) loadTable(tableFrom(parseCSV(text)),file.name); else loadDoc(readText(text,file.name)); }
+      if(ext==='csv'||ext==='tsv'||dl){ if(text.length>2e6){ busy('جارٍ تحليل الجدول…'); await new Promise(z=>setTimeout(z,30)); } loadTable(tableFrom(parseCSV(text)),file.name); } else loadDoc(readText(text,file.name)); }
   }catch(e){ console.error(e); render(); toast('صيغة الملف غير مفهومة'); } };
   bin?r.readAsArrayBuffer(file):r.readAsText(file); }
 // Skip title rows above the real header: the header is the first of the top 15 rows that is wide and mostly non-numeric.
@@ -310,7 +311,7 @@ function testPair(a,b,minN=2){
   return null; }
 function compliance(){ const pii=byType('pii').map(c=>({name:c.name,kind:c.pii||'محدَّد يدوياً',n:c.raw.filter(v=>v!=='').length}));
   const tp=A.texts.concat(A.cats).map(c=>({name:c.name,n:c.raw.filter(v=>v!==''&&textPII(v)).length})).filter(x=>x.n);
-  const qi=A.cats.filter(c=>S.qi.has(c.name)); let kan=null; if(qi.length){ const m=new Map(); for(let i=0;i<S.n;i++){ const k=qi.map(c=>c.raw[i]).join('\u0001'); m.set(k,(m.get(k)||0)+1); } const sizes=[...m.values()]; kan={classes:sizes.length,min:Math.min(...sizes),risk:sizes.filter(s=>s<5).reduce((a,b)=>a+b,0),uniq:sizes.filter(s=>s===1).length}; }
+  const qi=A.cats.filter(c=>S.qi.has(c.name)); let kan=null; if(qi.length){ const m=new Map(); for(let i=0;i<S.n;i++){ const k=qi.map(c=>c.raw[i]).join('\u0001'); m.set(k,(m.get(k)||0)+1); } const sizes=[...m.values()]; kan={classes:sizes.length,min:amin(sizes),risk:sizes.filter(s=>s<5).reduce((a,b)=>a+b,0),uniq:sizes.filter(s=>s===1).length}; }
   const small=[]; A.cats.forEach(c=>{ const m=new Map(); c.raw.forEach(v=>{ if(v!=='') m.set(v,(m.get(v)||0)+1); }); m.forEach((n,v)=>{ if(n<5) small.push({col:c.name,v,n}); }); });
   const q=A.q, a=A.rel?A.rel.alpha:null, auto=[
     {t:'حجم العينة',s:S.n>=100?'ok':S.n>=30?'warn':'bad',d:`${S.n} استجابة. هامش الخطأ التقريبي ±${f(100*moe(S.n,S.pop),1)}% عند ثقة 95%.`},
@@ -350,7 +351,7 @@ function likert(items){ if(!items.length) return '<p class="muted">لا توجد
 function npsBlock(n){ return `<div class="lstack" style="height:26px">${[['المنتقدون (0–6)',n.d,'var(--neg3)','w'],['المحايدون (7–8)',n.pa,'var(--mid)','m'],['المروّجون (9–10)',n.p,'var(--pos3)','w']].map(([l,p,bg,cl])=>p>0?`<div class="seg ${cl}" style="flex:${p} 0 0;background:${bg}" data-tip="${l}: ${pc(p)}">${Math.round(100*p)}%</div>`:'').join('')}</div>
   <div class="legend"><span><i style="background:var(--neg3)"></i>المنتقدون (0–6)</span><span><i style="background:var(--mid)"></i>المحايدون (7–8)</span><span><i style="background:var(--pos3)"></i>المروّجون (9–10)</span></div>
   <p>صافي نقاط الترويج <span class="stat">NPS = ${f(n.score,0)}, 95% CI [${f(n.lo,0)}, ${f(n.hi,0)}], n = ${n.n}</span></p>`; }
-function hist(xs){ const mn=Math.min(...xs),mx=Math.max(...xs),k=Math.min(12,Math.max(4,Math.ceil(Math.sqrt(xs.length)))),w=(mx-mn)/k||1,b=new Array(k).fill(0); xs.forEach(x=>b[Math.min(k-1,Math.floor((x-mn)/w))]++); const top=Math.max(...b);
+function hist(xs){ const mn=amin(xs),mx=amax(xs),k=Math.min(12,Math.max(4,Math.ceil(Math.sqrt(xs.length)))),w=(mx-mn)/k||1,b=new Array(k).fill(0); xs.forEach(x=>b[Math.min(k-1,Math.floor((x-mn)/w))]++); const top=Math.max(...b);
   return `<div class="hist">${b.map((n,i)=>`<div style="height:${100*n/top}%" data-tip="${f(mn+i*w,1)} – ${f(mn+(i+1)*w,1)}: ${n}"></div>`).join('')}</div><div class="haxis"><span>${f(mn,1)}</span><span>${f(mx,1)}</span></div>`; }
 const STOP=new Set('في من على الى إلى عن مع هذا هذه ذلك التي الذي ما لا لم لن ان أن إن او أو ثم قد كل كان كانت هو هي هم نحن انا أنا بعد قبل عند حتى اذا إذا بين غير اكثر أكثر جدا جداً و يا the a an and or of to in is are for on with it this that be as at by'.split(' ').map(AR_NORM));
 function words(c){ const m=new Map(); c.raw.forEach(v=>{ if(v==='') return; new Set(AR_NORM(scrub(v)).replace(/[^\p{L}\s]/gu,' ').split(' ').map(w=>w.replace(/^(وال|بال|كال|فال|لل|ال)(?=.{3,})/,''))).forEach(w=>{ if(w.length>2&&!STOP.has(w)) m.set(w,(m.get(w)||0)+1); }); }); return [...m].sort((a,b)=>b[1]-a[1]).slice(0,12); }
@@ -652,17 +653,16 @@ function docReport(){ const a=DA,I=a.ins,today=new Date().toISOString().slice(0,
 P.ins=()=>insightsHTML(A.ins,false); Object.assign(P,PD);
 
 /* ============ rendering & events ============ */
-function showTab(){ TABS.forEach(([k])=>{ const p=$('#p-'+k),t=$('#tab-'+k); if(p) p.hidden=k!==cur; if(t){ t.setAttribute('aria-selected',k===cur); t.tabIndex=k===cur?0:-1; } }); }
+function showTab(){ TABS.forEach(([k])=>{ const p=$('#p-'+k),t=$('#tab-'+k); if(p&&k===cur&&p.dataset.stale){ p.innerHTML=panelHTML(k); delete p.dataset.stale; if(k==='data'&&$('#paste')) $('#paste').value=S.pasted||''; if(k==='rel'&&S.pair&&$('#va')&&$('#va').querySelector(`option[value="${S.pair[0]}"]`)&&$('#vb').querySelector(`option[value="${S.pair[1]}"]`)){ $('#va').value=S.pair[0]; $('#vb').value=S.pair[1]; if(S.hadTest) runTest(); } } if(p) p.hidden=k!==cur; if(t){ t.setAttribute('aria-selected',k===cur); t.tabIndex=k===cur?0:-1; } }); }
 function panelHTML(k){ if(P[k]) return P[k](); const m=MODS.find(x=>x.id===k); return m?modCall(m,'render'):''; }
-function render(){ const act=document.activeElement&&document.activeElement.id, paste=$('#paste')?$('#paste').value:'', hadTest=$('#testOut')&&$('#testOut').innerHTML!=='', doc=S.mode==='doc';
+function render(){ const act=document.activeElement&&document.activeElement.id, paste=$('#paste')?$('#paste').value:(S.pasted||''), doc=S.mode==='doc';
   TABS=tabsFor(doc?'doc':'table'); if(!TABS.some(t=>t[0]===cur)) cur=TABS[0][0];
   const b=$('#banner'); b.hidden=!(doc?D.sample:S.sample); b.textContent=doc?'تعرض الصفحة الآن مستنداً تجريبياً مكتوباً للعرض. حمّل ملفك لتحليل محتواه.':'تعرض الصفحة الآن بيانات تجريبية مولّدة آلياً (242 استجابة افتراضية). حمّل ملفك لتحليل بياناتك.';
   $('#tabs').innerHTML=TABS.map(([k,l])=>`<button role="tab" id="tab-${k}" data-tab="${k}" aria-controls="p-${k}" aria-selected="${k===cur}">${l}</button>`).join('');
-  $('#panels').innerHTML=TABS.map(([k])=>`<section class="panel" role="tabpanel" aria-labelledby="tab-${k}" id="p-${k}"${k===cur?'':' hidden'}>${panelHTML(k)}</section>`).join('');
-  showTab(); if($('#paste')) $('#paste').value=paste;
-  if(!doc&&S.pair&&$('#va')&&S.cols[+S.pair[0]]&&S.cols[+S.pair[1]]&&$('#va').querySelector(`option[value="${S.pair[0]}"]`)&&$('#vb').querySelector(`option[value="${S.pair[1]}"]`)){ $('#va').value=S.pair[0]; $('#vb').value=S.pair[1]; if(hadTest) runTest(); }
+  $('#panels').innerHTML=TABS.map(([k])=>`<section class="panel" role="tabpanel" aria-labelledby="tab-${k}" id="p-${k}" data-stale="1" hidden></section>`).join('');
+  S.pasted=paste; showTab(); if($('#paste')) $('#paste').value=paste;
   if(act){ const e=document.getElementById(act); if(e) e.focus({preventScroll:true}); } }
-function runTest(){ const a=S.cols[+$('#va').value],b=S.cols[+$('#vb').value],o=$('#testOut'); S.pair=[$('#va').value,$('#vb').value]; if(!a||!b||a===b){ o.innerHTML='<p class="muted">اختر متغيرين مختلفين.</p>'; return; }
+function runTest(){ const a=S.cols[+$('#va').value],b=S.cols[+$('#vb').value],o=$('#testOut'); S.pair=[$('#va').value,$('#vb').value]; S.hadTest=true; if(!a||!b||a===b){ o.innerHTML='<p class="muted">اختر متغيرين مختلفين.</p>'; return; }
   const t=testPair(a,b); if(t&&(Number.isNaN(t.p)||Number.isNaN(t.es))){ o.innerHTML='<p class="muted">تعذّر حساب الاختبار: أحد المتغيرين أو إحدى المجموعات بلا تباين.</p>'; return; } if(!t){ o.innerHTML='<p class="muted">لا يمكن اختبار هذا الزوج: نحتاج مجموعتين على الأقل في كل منهما مشاهدتان.</p>'; return; }
   let d=''; if(t.detail&&t.detail.kind==='groups') d=`<div class="scroll"><table><thead><tr><th>المجموعة</th><th class="n">n</th><th class="n">المتوسط</th><th class="n">الوسيط</th><th class="n">الانحراف</th></tr></thead><tbody>${t.detail.rows.sort((x,y)=>y.mean-x.mean).map(r=>`<tr><td>${esc(r.g)}</td><td class="n">${r.n}</td><td class="n">${f(r.mean)}</td><td class="n">${f(r.median)}</td><td class="n">${f(r.sd)}</td></tr>`).join('')}</tbody></table></div>`;
   if(t.detail&&t.detail.kind==='xtab'){ const {R,C,tab}=t.detail; d=`<div class="scroll"><table><thead><tr><th>نسب الصف</th>${C.map(x=>`<th class="n">${esc(x)}</th>`).join('')}<th class="n">n</th></tr></thead><tbody>${R.map((r,i)=>{ const s=tab[i].reduce((p,q)=>p+q,0); return `<tr><td>${esc(r)}</td>${tab[i].map(v=>`<td class="n">${pc(v/s,0)}</td>`).join('')}<td class="n">${s}</td></tr>`; }).join('')}</tbody></table></div>`; }
