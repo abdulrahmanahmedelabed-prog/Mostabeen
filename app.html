@@ -104,11 +104,12 @@ ul.clean{margin:0;padding-inline-start:20px;display:flex;flex-direction:column;g
 
 <div class="wrap" dir="rtl" lang="ar">
   <header class="top">
-    <div class="brand"><b>مُستبين</b><span class="muted">تحليل الاستبانات · الإحصاء · الامتثال · التقارير</span></div>
+    <div class="brand"><b>مُستبين</b><span class="muted">تحليل الاستبانات والجداول والمستندات · الإحصاء · الامتثال · التقارير</span></div>
     <div class="actions">
-      <button class="primary" id="btnFile" type="button">حمّل ملف استبانة</button>
-      <input type="file" id="file" accept=".csv,.tsv,.txt,.xlsx,.xls" hidden>
-      <button id="btnSample">بيانات تجريبية</button>
+      <button class="primary" id="btnFile" type="button">حمّل ملفاً</button>
+      <input type="file" id="file" accept=".csv,.tsv,.txt,.md,.xlsx,.xls,.docx,.pdf" hidden>
+      <button id="btnSample">استبانة تجريبية</button>
+      <button id="btnSampleDoc">مستند تجريبي</button>
     </div>
   </header>
   <div class="banner" id="banner" hidden></div>
@@ -177,7 +178,7 @@ FAM.forEach(F=>{ F.map={}; F.labels.forEach((l,i)=>{ F.map[AR_NORM(l)]=i+1; F.al
 
 /* ============ personal-data detection ============ */
 const PII_NAME=[[/(e-?mail|بريد|ايميل|إيميل)/i,'بريد إلكتروني'],[/(phone|mobile|whatsapp|\btel\b|contact (number|no)|جوال|هاتف|موبايل|تلفون|واتساب|رقم التواصل)/i,'رقم هاتف'],[/(national id|iqama|هوية|هويه|إقامة|اقامة|سجل مدني|passport|جواز)/i,'رقم هوية'],[/^(?!.*(اسم (ال)?(إدارة|ادارة|قسم|شركة|جهة|مشروع|منتج|دورة|فرع|مدينة)|(company|product|department|brand|course|file|branch|city) ?name)).*(\bname\b|username|(^|\s)(ال)?اسم(ك|كم)?(\s|$))/i,'اسم شخص'],[/(\bip\b|ip address)/i,'عنوان IP']];
-const RX={'بريد إلكتروني':/[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu,'رقم هوية':/(?<!\d)[12]\d{9}(?!\d)/g,'رقم هاتف':/(?<![\d.])(?:\+|00)?\(?\d{1,4}\)?(?:[\s.-]?\d{2,4}){2,4}(?![\d.])/g,'عنوان IP':/(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])/g};
+const RX={'بريد إلكتروني':/[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu,'رقم هوية':/(?<!\d)[12]\d{9}(?!\d)/g,'رقم هاتف':/(?<!\d)(?<!\d\.)(?:\+|00)?\(?\d{1,4}\)?(?:[\s.-]?\d{2,4}){2,4}(?!\d)(?!\.\d)/g,'عنوان IP':/(?<!\d)(?<!\d\.)(?:\d{1,3}\.){3}\d{1,3}(?!\d)(?!\.\d)/g};
 // A phone-shaped match counts only with 9–15 digits and when it is not a date.
 const piiOk=(k,m)=>{ if(k!=='رقم هاتف') return true; const d=m.replace(/\D/g,'').length; return d>=9&&d<=15&&!/^\d{4}[-.]\d{1,2}[-.]\d{1,2}|^\d{1,2}[-.]\d{1,2}[-.]\d{4}/.test(m.trim()); };
 const idCheck=s=>{ let t=0; for(let i=0;i<10;i++){ const d=+s[i]; if(i%2===0){ const x=d*2; t+=x>9?x-9:x; } else t+=d; } return t%10===0; };
@@ -191,7 +192,7 @@ function scrub(v){ let s=latin(v); for(const k in RX) s=s.replace(RX[k],m=>piiOk
 
 /* ============ data model ============ */
 const TYPES={scale:'مقياس ترتيبي (ليكرت)',numeric:'رقمي',nps:'توصية 0–10 (NPS)',categorical:'فئوي',text:'نص مفتوح',pii:'بيانات شخصية',id:'معرّف',ignore:'تجاهل'};
-const S={name:'',sample:false,cols:[],n:0,pop:null,qi:null,rel:null,checks:{},title:''};
+const S={mode:'table',book:null,skipped:0,name:'',sample:false,cols:[],n:0,pop:null,qi:null,rel:null,checks:{},title:''};
 const MISSING=new Set(['','na','n/a','null','-','—']), NA_TOKENS=new Set(['لا يوجد','لا ينطبق','لا أعرف','لا اعرف']);
 const NPS_RX=/\bnps\b|توصي(?!ل|ات)|يوصي|recommend/i;
 function bestFam(vs){ let b=null,bs=0; for(const F of FAM){ const sh=vs.filter(v=>F.map[AR_NORM(v)]).length/(vs.length||1); if(sh>bs){bs=sh;b=F;} } return [b,bs]; }
@@ -224,8 +225,9 @@ function setType(c,t){ c.type=t; c.num=null; c.unmapped=0;
 function scaleOk(c){ const vs=c.raw.filter(v=>v!==''&&!NA_TOKENS.has(v)); if(bestFam(vs)[1]>=.5) return true; const xs=vs.map(toNum).filter(x=>x!=null); return xs.length>0&&xs.every(Number.isInteger)&&Math.min(...xs)>=0&&Math.max(...xs)<=10; }
 const vals=c=>c.num?c.num.filter(x=>x!=null):c.raw.filter(v=>v!=='');
 const byType=(...t)=>S.cols.filter(c=>t.includes(c.type));
-function loadTable(rows,name,sample){ rows=rows.filter(r=>r&&r.some(v=>v!=null&&String(v).trim()!=='')); if(rows.length<3){ toast('الملف لا يحتوي صفوفاً كافية: نحتاج صف عناوين وصفّي بيانات على الأقل'); return; }
+function loadTable(rows,name,sample,keep){ MODS.forEach(m=>{ const r=modCall(m,'preprocess',rows,name); if(Array.isArray(r)) rows=r; }); rows=rows.filter(r=>r&&r.some(v=>v!=null&&String(v).trim()!=='')); if(rows.length<3){ toast('الملف لا يحتوي صفوفاً كافية: نحتاج صف عناوين وصفّي بيانات على الأقل'); return; }
   const seen=new Set(),head=rows[0].map((h,i)=>{ const b=String(h??'').replace(/\s+/g,' ').trim()||('عمود '+(i+1)); let s=b,k=1; while(seen.has(s)) s=b+' ('+(++k)+')'; seen.add(s); return s; });
+  if(!keep) S.book=null; S.mode='table'; if(cur[0]==='d'&&cur!=='data') cur='sum';
   const body=rows.slice(1); S.cols=head.map((h,j)=>makeCol(h,body.map(r=>r[j]))); S.n=body.length; S.name=name; S.sample=!!sample; S.qi=null; S.rel=null; S.pop=null; S.pair=null; S.checks={}; S.title=sample?'استبانة الارتباط الوظيفي (مثال)':name.replace(/\.[^.]+$/,'');
   analyze(); }
 function parseCSV(text){ text=text.replace(/^﻿/,'').replace(/\r\n?/g,'\n');
@@ -233,10 +235,20 @@ function parseCSV(text){ text=text.replace(/^﻿/,'').replace(/\r\n?/g,'\n');
   const delim=['\t',';',','].sort((a,b)=>cnt[b]-cnt[a])[0];
   const rows=[]; let row=[],cur='',q=false; for(let i=0;i<text.length;i++){ const ch=text[i]; if(q){ if(ch==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; } else if(ch==='"'&&cur==='') q=true; else if(ch===delim){ row.push(cur); cur=''; } else if(ch==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; } else cur+=ch; }
   if(cur!==''||row.length){ row.push(cur); rows.push(row); } return rows; }
-function readFile(file){ const r=new FileReader(); const xl=/\.xlsx?$/i.test(file.name);
+function readFile(file){ const ext=(file.name.match(/\.([^.]+)$/)||['',''])[1].toLowerCase(), bin=['xlsx','xls','docx','pdf'].includes(ext), r=new FileReader();
+  if(ext==='doc'){ toast('صيغة ‎.doc القديمة غير مدعومة. احفظ الملف بصيغة ‎.docx ثم ارفعه'); return; }
   r.onerror=()=>toast('تعذّرت قراءة الملف');
-  r.onload=()=>{ try{ if(xl){ if(!window.XLSX){ toast('مكتبة Excel لم تُحمَّل. احفظ الملف بصيغة CSV وأعد المحاولة'); return; } const wb=XLSX.read(r.result,{type:'array'}); loadTable(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:false}),file.name); } else loadTable(parseCSV(r.result),file.name); }catch(e){ console.error(e); toast('صيغة الملف غير مفهومة. جرّب CSV بترميز UTF-8'); } };
-  xl?r.readAsArrayBuffer(file):r.readAsText(file); }
+  r.onload=async()=>{ try{
+    if(ext==='docx'||ext==='pdf'){ busy('جارٍ قراءة المستند…'); let d; try{ d=await (ext==='pdf'?readPdf(new Uint8Array(r.result),file.name):readDocx(r.result,file.name)); }catch(e){ console.error(e); render(); toast(e&&e.message==='lib'?'تعذّر تحميل مكتبة القراءة. تحقق من الاتصال بالإنترنت':e&&e.name==='PasswordException'?'الملف محمي بكلمة مرور':'تعذّرت قراءة المستند. قد يكون تالفاً'); return; }
+      if(!d.blocks.length&&!d.tables.length&&!(d.pages)){ render(); toast('المستند فارغ'); return; } loadDoc(d); }
+    else if(bin){ if(!window.XLSX){ toast('مكتبة Excel لم تُحمَّل. احفظ الملف بصيغة CSV وأعد المحاولة'); return; } const wb=XLSX.read(r.result,{type:'array'}),sheets={}; wb.SheetNames.forEach(n=>{ const rows=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:'',raw:false}).filter(x=>x.some(v=>String(v).trim()!=='')); if(rows.length>=3) sheets[n]=rows; });
+      const names=Object.keys(sheets); if(!names.length){ toast('لا ورقة في الملف فيها صف عناوين وصفّا بيانات على الأقل'); return; } S.book={name:file.name,sheets,cur:names[0]}; loadTable(tableFrom(sheets[names[0]]),file.name,false,true); }
+    else{ const text=r.result,first=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(l=>l.trim()).slice(0,6),dl=['\t',';',','].map(d=>first.map(l=>l.split(d).length)).find(c=>c.length>=2&&c[0]>1&&c.every(x=>x===c[0]));
+      if(ext==='csv'||ext==='tsv'||dl) loadTable(tableFrom(parseCSV(text)),file.name); else loadDoc(readText(text,file.name)); }
+  }catch(e){ console.error(e); render(); toast('صيغة الملف غير مفهومة'); } };
+  bin?r.readAsArrayBuffer(file):r.readAsText(file); }
+// Skip title rows above the real header: the header is the first of the top 15 rows that is wide and mostly non-numeric.
+function tableFrom(rows){ const w=Math.max(...rows.slice(0,30).map(r=>r.filter(v=>String(v??'').trim()!=='').length)); for(let i=0;i<Math.min(15,rows.length-2);i++){ const c=rows[i].map(v=>String(v??'').trim()).filter(Boolean); if(c.length>=Math.max(2,.6*w)&&c.filter(v=>toNum(v)==null).length>=.7*c.length){ S.skipped=i; return rows.slice(i); } } S.skipped=0; return rows; }
 
 /* ============ sample data (synthetic, clearly labelled) ============ */
 function sampleData(){ let seed=20261121; const rnd=()=>{ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };
@@ -276,7 +288,7 @@ function analyze(){
   const adj=ST.bh(res.map(r=>r.p)); res.forEach((r,i)=>r.padj=adj[i]); res.sort((x,y)=>x.padj-y.padj||x.p-y.p); A.scan=res;
   /* compliance */
   if(!S.qi) S.qi=new Set(cats.slice(0,3).map(c=>c.name)); else S.qi=new Set(cats.filter(c=>S.qi.has(c.name)).map(c=>c.name));
-  A.comp=compliance();
+  A.comp=compliance(); A.ins=insights(); MODS.forEach(m=>modCall(m,'onAnalyze'));
   render(); }
 function nps(c){ const xs=vals(c),n=xs.length,p=xs.filter(x=>x>=9).length/n,d=xs.filter(x=>x<=6).length/n,se=Math.sqrt((p+d-(p-d)**2)/n); return {name:c.name,n,p,d,pa:1-p-d,score:100*(p-d),lo:Math.max(-100,100*(p-d-1.96*se)),hi:Math.min(100,100*(p-d+1.96*se))}; }
 function reliability(items){ if(items.length<2) return null; const M=[]; for(let i=0;i<S.n;i++){ const r=items.map(c=>c.num[i]); if(r.every(x=>x!=null)) M.push(r); } if(M.length<3) return null;
@@ -346,8 +358,12 @@ function words(c){ const m=new Map(); c.raw.forEach(v=>{ if(v==='') return; new 
 const pill=s=>`<span class="pill ${s==='ok'?'ok':s==='warn'?'warn':s==='bad'?'bad':''}">${s==='ok'?'مستوفى':s==='warn'?'يحتاج مراجعة':s==='bad'?'غير مستوفى':'لا ينطبق'}</span>`;
 
 /* ============ panels ============ */
-const TABS=[['sum','الملخص'],['data','البيانات'],['qual','الجودة'],['res','النتائج'],['rel','العلاقات'],['reli','الثبات'],['comp','الامتثال'],['rep','التقرير']];
-let cur='sum';
+/* Modules (src/modules/*.js) register here. A module: {id,label,mode:'table'|'doc',after,render(),click(t,e),change(t,e),preprocess(rows,name),onAnalyze(),report()} */
+const MODS=[]; function addModule(m){ MODS.push(m); }
+function tabsFor(mode){ const base=(mode==='doc'?TABS_D:TABS_T).slice(); MODS.filter(m=>m.label&&m.render&&(m.mode||'table')===mode).forEach(m=>{ const i=base.findIndex(t=>t[0]===m.after); base.splice(i<0?base.length-1:i+1,0,[m.id,m.label]); }); return base; }
+const modCall=(m,fn,...a)=>{ try{ return m[fn]&&m[fn](...a); }catch(err){ console.error('module '+m.id,err); return fn==='render'||fn==='report'?'<div class="sheet"><p class="muted">تعذّر عرض هذا القسم.</p></div>':undefined; } };
+const TABS_T=[['sum','الملخص'],['ins','التقييم والتوصيات'],['data','البيانات'],['qual','الجودة'],['res','النتائج'],['rel','العلاقات'],['reli','الثبات'],['comp','الامتثال'],['rep','التقرير']];
+let TABS=TABS_T,cur='sum';
 function findings(){ const out=[],sc=A.scales; out.push(`حُلّلت <b class="num">${S.n}</b> استجابة على <b class="num">${A.use.length}</b> متغيراً. اكتمل <span class="num">${pc(A.q.full/S.n,0)}</span> من الاستجابات دون أي سؤال مغلق فارغ.`);
   if(sc.length>1){ const r=sc.map(c=>({n:c.name,m:ST.mean(vals(c)),hi:c.hi})).sort((a,b)=>b.m-a.m); out.push(`أعلى البنود تقييماً «${esc(r[0].n)}» بمتوسط <span class="num">${f(r[0].m)}</span> من ${r[0].hi}، وأدناها «${esc(r[r.length-1].n)}» بمتوسط <span class="num">${f(r[r.length-1].m)}</span>.`); }
   if(A.nps) out.push(`صافي نقاط الترويج <span class="num">${f(A.nps.score,0)}</span> (فترة الثقة 95%: <span class="num">${f(A.nps.lo,0)}</span> إلى <span class="num">${f(A.nps.hi,0)}</span>).`);
@@ -369,9 +385,10 @@ const P={
   ${A.scan.length?`<div class="sheet"><header><h2>أقوى الفروق</h2><span class="muted small">مصحّحة بطريقة بنجاميني–هوكبرغ</span></header>${scanTable(A.scan.slice(0,5))}</div>`:''}`; },
  data(){ return `
   <div class="sheet"><h2>مصدر البيانات</h2>
-   <div class="drop" id="drop"><p>اسحب ملف CSV أو Excel إلى هنا، أو الصق الجدول أدناه. الصف الأول عناوين الأسئلة وكل صف بعده مستجيب واحد.</p>
+   <div class="drop" id="drop"><p>اسحب ملفاً إلى هنا: CSV أو Excel لأي جدول بيانات، أو Word أو PDF أو نصاً لتحليل محتواه. أو الصق جدولاً أدناه، صفه الأول عناوين الأعمدة.</p>
     <textarea id="paste" rows="3" placeholder="الصق هنا بيانات منسوخة من Excel أو Google Sheets" style="width:100%"></textarea>
     <div class="row"><button id="btnPaste">حلّل النص الملصوق</button><span class="muted small">يُحلَّل الملف داخل متصفحك ولا يُرفع إلى أي خادم.</span></div></div></div>
+  ${S.book&&Object.keys(S.book.sheets).length>1?`<div class="sheet"><div class="row"><label for="sheetSel">ورقة العمل</label><select id="sheetSel">${Object.keys(S.book.sheets).map(n=>`<option${n===S.book.cur?' selected':''}>${esc(n)}</option>`).join('')}</select><span class="muted small">${Object.keys(S.book.sheets).length} أوراق في الملف${S.skipped?` · تخطّينا ${S.skipped} صف قبل العناوين`:''}</span></div></div>`:''}${D?`<div class="sheet"><div class="row"><button id="btnBackDoc">عُد إلى المستند «${esc(D.name)}»</button></div></div>`:''}
   <div class="sheet"><header><h2>المتغيرات</h2><span class="muted small">${S.cols.length} عمود · ${S.n} صف · ${esc(S.name)}</span></header>
    <p class="muted small">راجع النوع المكتشف آلياً قبل قراءة النتائج. عدد نقاط المقياس الرقمي يؤخذ من أعلى قيمة مرصودة في بنود المقياس. يُقرأ صف عناوين واحد فقط، وأسئلة الاختيار المتعدد لا تُفصل.</p>
    <div class="scroll"><table><thead><tr><th>العمود</th><th>النوع</th><th class="n">مُجاب</th><th class="n">مفقود</th><th class="n">قيم مختلفة</th><th>عيّنة</th></tr></thead><tbody>
@@ -422,6 +439,8 @@ function report(){ const c=A.comp,q=A.q,sig=A.scan.filter(r=>r.padj<.05),prob=S.
   const lim=[]; if(!prob) lim.push('لم يُؤكَّد أن العينة احتمالية، فلا تُعمَّم النسب على المجتمع وهامش الخطأ استرشادي.'); if(q.missRate>=.05) lim.push(`نسبة المفقود ${pc(q.missRate)} وقد تؤثر في التقديرات.`); if(q.dup) lim.push(`${q.dup} صفوف مكررة لم تُحذف.`); if(q.straight&&A.scales.length>=5) lim.push(`${q.straight} استجابة نمطية لم تُستبعد.`); if(A.rel&&A.rel.alpha<.7) lim.push('ثبات المقياس دون 0.70.'); lim.push('لم تُطبَّق أوزان ترجيح. النتائج تصف المجيبين كما هم.'); lim.push('الاختبارات ثنائية المتغير ولا تضبط أثر متغيرات أخرى.');
   return `<section><p class="muted small">تقرير تحليل استبانة · ${today}${S.sample?' · بيانات تجريبية مولّدة':''}</p><h1>${esc(S.title||'تقرير الاستبانة')}</h1></section>
   <section><h2>الملخص التنفيذي</h2><ul class="clean" id="exec">${findings().map(x=>`<li>${x}</li>`).join('')}</ul></section>
+  ${[['الاستنتاجات','cn'],['نقاط القوة','st'],['نقاط الضعف','wk'],['الخلل في البيانات والمنهج','df']].map(([t,k])=>A.ins[k].length?`<section><h2>${t}</h2>${insList(A.ins[k],'')}</section>`:'').join('')}
+  ${A.ins.ac.length?`<section><h2>التطوير المطلوب</h2><ol class="clean">${A.ins.ac.map(x=>`<li><b>${esc(x.t)}</b><br><span class="small muted">${esc(x.e)}</span></li>`).join('')}</ol></section>`:''}
   <section><h2>المنهجية والإفصاح</h2><div class="scroll"><table><tbody>
    <tr><th>عدد الاستجابات</th><td class="num">${S.n}</td></tr><tr><th>حجم المجتمع</th><td>${S.pop?'<span class="num">'+S.pop+'</span>':'غير محدد'}</td></tr>
    <tr><th>نوع العينة</th><td>${prob?'احتمالية (بتأكيد معدّ التقرير)':'غير مؤكد أنها احتمالية'}</td></tr>
@@ -437,14 +456,212 @@ function report(){ const c=A.comp,q=A.q,sig=A.scan.filter(r=>r.padj<.05),prob=S.
   <section><h2>الامتثال وحماية البيانات</h2><p>الجاهزية <b>${c.pass} من ${c.total}</b></p><div class="scroll"><table><tbody>${c.auto.map(x=>`<tr><td style="white-space:nowrap">${pill(x.s)}</td><td><b>${x.t}</b> — <span class="small">${esc(x.d)}</span></td></tr>`).join('')}${MANUAL.map(m=>`<tr><td style="white-space:nowrap">${pill(S.checks[m.id]?'ok':'warn')}</td><td>${m.t} <span class="muted small">(${m.r})</span></td></tr>`).join('')}</tbody></table></div><p class="muted small">قائمة استرشادية وليست شهادة امتثال أو رأياً قانونياً.</p></section>
   <section><h2>حدود التحليل</h2><ul class="clean">${lim.map(l=>`<li>${l}</li>`).join('')}</ul></section>`; }
 
+/* ============ assessment: strengths, weaknesses, defects, actions (rule-based, every line cites its evidence) ============ */
+const norm01=(c,x)=>(x-c.lo)/((c.hi-c.lo)||1);
+function insights(){ const st=[],wk=[],df=[],ac=[],cn=[],q=A.q,sc=A.scales,add=(arr,t,e)=>arr.push({t,e});
+  const items=sc.map(c=>{ const xs=vals(c); return {c,n:xs.length,m:ST.mean(xs),p:norm01(c,ST.mean(xs)),top:xs.filter(x=>x>=c.hi-1).length/xs.length,bot:xs.filter(x=>x<=c.lo+1).length/xs.length}; }).filter(x=>x.n>=5).sort((a,b)=>b.p-a.p);
+  /* importance: association of each item with the outcome (NPS if present, otherwise the mean of the other items) */
+  const out=A.nps?S.cols.find(c=>c.name===A.nps.name):null;
+  items.forEach(it=>{ const x=[],y=[]; for(let i=0;i<S.n;i++){ const v=it.c.num[i]; if(v==null) continue; let o=null; if(out) o=out.num[i]; else{ const r=sc.filter(c=>c!==it.c).map(c=>c.num[i]).filter(z=>z!=null); if(r.length) o=ST.mean(r); } if(o!=null){ x.push(v); y.push(o); } } it.imp=x.length>=10?ST.spearman(x,y).r:NaN; });
+  const imps=items.map(i=>i.imp).filter(isFinite).sort((a,b)=>a-b),medImp=imps.length?ST.q(imps,.5):NaN;
+  items.forEach(it=>{ const ev=`المتوسط ${f(it.m)} من ${it.c.hi}، أعلى خيارين ${pc(it.top,0)}، أدنى خيارين ${pc(it.bot,0)}، n = ${it.n}`;
+    if(it.p>=.68&&it.top>=.55) add(st,`«${it.c.name}» بند قوي`,ev);
+    else if(it.p<.5||it.bot>=.3) add(wk,`«${it.c.name}» بند ضعيف`,ev); });
+  if(A.nps){ const n=A.nps,ev=`NPS = ${f(n.score,0)}، فترة الثقة 95% من ${f(n.lo,0)} إلى ${f(n.hi,0)}، n = ${n.n}`; if(n.lo>0) add(st,'صافي نقاط الترويج موجب بثقة',ev); else if(n.hi<0) add(wk,'صافي نقاط الترويج سالب بثقة',ev); else add(cn,'صافي نقاط الترويج لا يختلف عن الصفر بثقة كافية',ev); }
+  /* groups that sit below the rest on significant, non-trivial differences */
+  const low=new Map(); A.scan.filter(r=>r.padj<.05&&r.detail&&r.detail.kind==='groups'&&r.esL!=='ضئيل').forEach(r=>{ const g=[...r.detail.rows].sort((a,b)=>a.mean-b.mean)[0],k=r.a+'\u0001'+g.g; if(!low.has(k)) low.set(k,{by:r.a,g:g.g,n:g.n,vars:[]}); low.get(k).vars.push(r.b); });
+  const lows=[...low.values()].sort((a,b)=>b.vars.length-a.vars.length).filter((l,i,arr)=>l.vars.length>=2||arr[0].vars.length<2);
+  lows.slice(0,4).forEach(l=>add(wk,`فئة «${l.g}» (${l.by}) هي الأدنى في ${l.vars.length} متغير بفروق دالة`,`n = ${l.n}. المتغيرات: ${l.vars.slice(0,4).join('، ')}${l.vars.length>4?' وغيرها':''}. بعد تصحيح بنجاميني–هوكبرغ.`));
+  if(A.rel){ const a=A.rel.alpha,ev=`ألفا كرونباخ = ${f(a,3)} على ${A.rel.k} بنود، n = ${A.rel.n}`; if(a>=.8) add(st,'المقياس متسق داخلياً',ev); else if(a<.7) add(df,'ثبات المقياس دون 0.70، فلا يصح جمع بنوده في مؤشر واحد',ev);
+    A.rel.rows.filter(r=>r.rit<.3).forEach(r=>add(df,`البند «${r.name}» ضعيف الارتباط ببقية المقياس${r.rit<0?' وقد يكون معكوس الصياغة':''}`,`ارتباط البند بالمجموع المصحّح = ${f(r.rit,3)}`)); }
+  /* defects in the data and the method */
+  if(S.n<30) add(df,'العينة أصغر من 30، والاختبارات الإحصائية ضعيفة القوة',`n = ${S.n}`); else if(S.n>=100) add(st,'حجم العينة كافٍ للمقارنات الأساسية',`n = ${S.n}، هامش الخطأ ±${f(100*moe(S.n,S.pop),1)}%`);
+  if(q.missRate>=.05) add(df,'نسبة القيم المفقودة مرتفعة',`${pc(q.missRate)} من خلايا الأسئلة المغلقة (${q.miss} من ${q.cells})`); else if(q.cells) add(st,'القيم المفقودة قليلة',pc(q.missRate)+' من خلايا الأسئلة المغلقة');
+  if(q.dup) add(df,'توجد صفوف مكررة بالكامل',`${q.dup} صف`);
+  if(sc.length>=5&&q.straight/S.n>=.03) add(df,'استجابات نمطية اختارت الخيار نفسه لكل البنود',`${q.straight} استجابة (${pc(q.straight/S.n)})`);
+  if(q.speed&&q.speed.n) add(df,'إجابات متعجّلة قد لا تعكس قراءة الأسئلة',`${q.speed.n} استجابة أقل من ثلث وسيط المدة (${f(q.speed.cut,0)})`);
+  const cp=A.comp; if(cp.pii.length) add(df,'الملف يحتوي أعمدة بيانات شخصية مباشرة',cp.pii.map(p=>`${p.name} (${p.kind})`).join('، '));
+  if(cp.kan&&cp.kan.risk/S.n>.1) add(df,'خطر إعادة التعرّف على الأفراد مرتفع',`${cp.kan.risk} سجل (${pc(cp.kan.risk/S.n)}) في مجموعات أقل من 5، منها ${cp.kan.uniq} فريد`);
+  if(!S.checks.prob) add(df,'لم يُؤكَّد أن العينة احتمالية، فلا تُعمَّم النتائج على المجتمع',"البند «العينة احتمالية» في قائمة الامتثال غير مؤكَّد");
+  /* actions, most consequential first */
+  const pri=items.filter(it=>it.p<.6&&isFinite(it.imp)&&it.imp>=medImp&&it.imp>=.3).sort((a,b)=>(b.imp-b.p)-(a.imp-a.p)).slice(0,3);
+  pri.forEach(it=>add(ac,`ابدأ بتحسين «${it.c.name}»`,`أداء منخفض (${f(it.m)} من ${it.c.hi}) مع ارتباط مرتفع بـ${out?'نية التوصية':'بقية المقياس'} (ρ = ${f(it.imp)}). الارتباط لا يثبت السببية.`));
+  const rest=items.filter(it=>(it.p<.5||it.bot>=.3)&&!pri.includes(it)).slice(-2); rest.forEach(it=>add(ac,`عالج «${it.c.name}»`,`${pc(it.bot,0)} اختاروا أدنى خيارين، والمتوسط ${f(it.m)} من ${it.c.hi}`));
+  lows.slice(0,2).forEach(l=>add(ac,`ابحث أسباب انخفاض فئة «${l.g}» بمقابلات أو مجموعة تركيز`,`الأدنى في ${l.vars.length} متغير بحسب «${l.by}»`));
+  if(q.dup||(sc.length>=5&&q.straight)||(q.speed&&q.speed.n)) add(ac,'نظّف البيانات ثم أعد التحليل وقارن النتيجتين',[q.dup?`${q.dup} مكرر`:'',sc.length>=5&&q.straight?`${q.straight} نمطي`:'',q.speed&&q.speed.n?`${q.speed.n} متعجّل`:''].filter(Boolean).join('، '));
+  if(cp.pii.length||cp.tp.length) add(ac,'احذف المعرّفات المباشرة قبل مشاركة الملف','استخدم زر التنزيل بلا معرّفات مباشرة في تبويب الامتثال، ثم راجع النصوص المفتوحة يدوياً');
+  if(cp.kan&&cp.kan.risk) add(ac,'ادمج الفئات الصغيرة قبل نشر الجداول التفصيلية',`${cp.small.length} فئة أقل من 5`);
+  if(!S.checks.prob&&S.n>=30) add(ac,'وثّق طريقة سحب العينة، وطبّق أوزان ترجيح إن اختلفت تركيبة المجيبين عن المجتمع','مستبين لا يطبّق الترجيح، فاستخدم SPSS أو R لهذه الخطوة');
+  A.rel&&A.rel.rows.filter(r=>r.rit<.3).slice(0,2).forEach(r=>add(ac,`راجع صياغة البند «${r.name}» أو احذفه من المؤشر`,`ألفا عند الحذف = ${f(r.del,3)}`));
+  /* conclusions */
+  if(items.length){ const ov=ST.mean(items.map(i=>i.p)),top=ST.mean(items.map(i=>i.top)); add(cn,`التقييم العام ${ov>=.68?'إيجابي':ov>=.5?'متوسط يميل إلى الإيجاب':ov>=.4?'متوسط يميل إلى السلب':'سلبي'}`,`متوسط البنود على مقياس موحّد من 0 إلى 100 = ${f(100*ov,0)}، ومتوسط نسبة أعلى خيارين ${pc(top,0)} على ${items.length} بنود`);
+    if(items.length>2) add(cn,`الفجوة بين أعلى بند وأدناه ${f(100*(items[0].p-items[items.length-1].p),0)} نقطة من 100`,`«${items[0].c.name}» مقابل «${items[items.length-1].c.name}»`); }
+  const sig=A.scan.filter(r=>r.padj<.05); if(A.scan.length) add(cn,sig.length?`الفروق بين الفئات حقيقية في ${sig.length} من ${A.scan.length} مقارنة`:'لا فروق دالة بين الفئات، فالنتائج متقاربة عبر المجموعات',sig.length?`أكثر المتغيرات تفريقاً: ${[...new Set(sig.map(r=>r.a))].slice(0,3).join('، ')}`:'بعد تصحيح المقارنات المتعددة');
+  const conf=df.length>=4?'منخفضة':df.length>=2?'متوسطة':'جيدة'; add(cn,`درجة الثقة في هذه الاستنتاجات ${conf}`,`${df.length} خلل منهجي أو في البيانات مرصود`);
+  return {st,wk,df,ac,cn}; }
+const insList=(arr,empty)=>arr.length?`<ul class="clean">${arr.map(x=>`<li><b>${esc(x.t)}</b><br><span class="small muted">${esc(x.e)}</span></li>`).join('')}</ul>`:`<p class="muted">${empty}</p>`;
+function insightsHTML(I,doc){ return `
+  <div class="sheet"><h2>الاستنتاجات</h2>${insList(I.cn,'لا توجد بيانات كافية لاستنتاج.')}</div>
+  <div class="grid2"><div class="sheet"><h2>نقاط القوة</h2>${insList(I.st,'لم يُرصد ما يبلغ عتبة القوة.')}</div><div class="sheet"><h2>نقاط الضعف</h2>${insList(I.wk,'لم يُرصد ما يبلغ عتبة الضعف.')}</div></div>
+  <div class="sheet"><h2>${doc?'الخلل في المستند':'الخلل في البيانات والمنهج'}</h2>${insList(I.df,'لم يُرصد خلل بالفحوص الآلية.')}</div>
+  <div class="sheet"><h2>التطوير المطلوب، مرتباً بالأولوية</h2>${I.ac.length?`<ol class="clean">${I.ac.map(x=>`<li><b>${esc(x.t)}</b><br><span class="small muted">${esc(x.e)}</span></li>`).join('')}</ol>`:'<p class="muted">لا توصيات آلية.</p>'}</div>
+  <p class="muted small">هذا التقييم يُشتق بقواعد ثابتة من الأرقام المحسوبة، وكل سطر يذكر دليله. ${doc?'يقيس بنية النص وخصائصه القابلة للعدّ، ولا يحكم على صحة الأفكار أو جودة المحتوى.':'العتبات: بند قوي عند 68 من 100 فأكثر مع 55% في أعلى خيارين، وضعيف دون 50 أو عند 30% في أدنى خيارين.'} ليس بديلاً عن حكم مختص.</p>`; }
+
+/* ============ documents: Word, PDF, plain text ============ */
+const LIB={mammoth:['https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js'],pdf:['https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js','https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js']};
+const libs={};
+function loadLib(k){ return libs[k]||(libs[k]=LIB[k].reduce((p,u)=>p.then(()=>new Promise((ok,no)=>{ const s=document.createElement('script'); s.src=u; s.onload=ok; s.onerror=()=>no(new Error('lib')); document.head.appendChild(s); })),Promise.resolve()).catch(e=>{ delete libs[k]; throw e; })); }
+let D=null,DA=null;
+const busy=m=>{ const b=$('#banner'); b.hidden=false; b.textContent=m; };
+async function readDocx(buf,name){ await loadLib('mammoth'); const r=await window.mammoth.convertToHtml({arrayBuffer:buf}); const dom=new DOMParser().parseFromString(r.value,'text/html'),blocks=[],tables=[];
+  const walk=el=>{ for(const n of el.children){ const tag=n.tagName,tx=n.textContent.replace(/\s+/g,' ').trim(); if(/^H[1-6]$/.test(tag)){ if(tx) blocks.push({t:'h',level:+tag[1],text:tx}); } else if(tag==='TABLE'){ const rows=[...n.rows].map(tr=>[...tr.cells].map(c=>c.textContent.replace(/\s+/g,' ').trim())); if(rows.length) tables.push({rows,at:blocks.length}); } else if(tag==='P'){ if(tx) blocks.push({t:'p',text:tx}); } else if(tag==='LI'&&!n.querySelector('ul,ol,p')){ if(tx) blocks.push({t:'p',text:tx,li:true}); } else walk(n); } };
+  walk(dom.body); const images=[...dom.querySelectorAll('img')].map(im=>({alt:(im.getAttribute('alt')||'').trim(),src:im.getAttribute('src')||''})); return {name,kind:'Word',blocks,tables,images,pages:null,meta:null}; }
+async function readPdf(buf,name){ await loadLib('pdf'); const lib=window.pdfjsLib; lib.GlobalWorkerOptions.workerSrc=LIB.pdf[0]; const pdf=await lib.getDocument({data:buf,isEvalSupported:false}).promise,lines=[];
+  for(let p=1;p<=pdf.numPages;p++){ if(p%10===1) busy(`جارٍ قراءة الصفحة ${p} من ${pdf.numPages}…`); const tc=await (await pdf.getPage(p)).getTextContent(); let cur=null,prev=null;
+    for(const it of tc.items){ if(!it.str) continue; const y=it.transform[5],x=it.transform[4],h=it.height||Math.abs(it.transform[3])||10,w=it.width||0;
+      if(cur&&Math.abs(y-cur.y)<Math.max(h,cur.h)*.5){ const gap=Math.min(Math.abs(x-(prev.x+prev.w)),Math.abs(prev.x-(x+w))); cur.text+=(gap>.2*h&&!/\s$/.test(cur.text)&&!/^\s/.test(it.str)?' ':'')+it.str; cur.h=Math.max(cur.h,h); }
+      else{ cur={text:it.str,y,h,page:p}; lines.push(cur); } prev={x,w}; } }
+  const hs=lines.filter(l=>l.text.trim()).map(l=>l.h).sort((a,b)=>a-b),body=hs.length?ST.q(hs,.5):10,blocks=[]; let par=null,last=null;
+  for(const l of lines){ const tx=l.text.replace(/\s+/g,' ').trim(); if(!tx){ continue; }
+    if(l.h>=1.2*body&&tx.length<=90&&!/[.،:؛]$/.test(tx)){ blocks.push({t:'h',level:l.h>=1.6*body?1:2,text:tx,page:l.page}); par=null; last=l; continue; }
+    const brk=!par||!last||last.page!==l.page&&/[.!?؟:]$/.test(par.text)||last.page===l.page&&Math.abs(last.y-l.y)>1.7*Math.max(last.h,l.h);
+    if(brk){ par={t:'p',text:tx,page:l.page}; blocks.push(par); } else par.text+=(/-$/.test(par.text)?'':' ')+tx; last=l; }
+  let meta=null; try{ const m=await pdf.getMetadata(); meta=m&&m.info?{Title:m.info.Title,Author:m.info.Author,Creator:m.info.Creator,Producer:m.info.Producer}:null; }catch(_){}
+  return {name,kind:'PDF',blocks,tables:[],pages:pdf.numPages,meta}; }
+function readText(text,name){ const blocks=text.replace(/\r\n?/g,'\n').split(/\n\s*\n|\n/).map(s=>s.trim()).filter(Boolean).map(s=>/^#{1,6}\s/.test(s)?{t:'h',level:s.match(/^#+/)[0].length,text:s.replace(/^#+\s*/,'')}:{t:'p',text:s}); return {name,kind:'نص',blocks,tables:[],pages:null,meta:null}; }
+function sampleDoc(){ const h=(text,level=1)=>({t:'h',level,text}),p=text=>({t:'p',text});
+  loadDoc({name:'مستند تجريبي',kind:'Word',sample:true,pages:null,meta:null,blocks:[h('سياسة العمل عن بُعد'),
+    p('تهدف هذه السياسة إلى تنظيم العمل عن بُعد في الشركة اعتباراً من 1 يناير 2027. تسري السياسة على جميع الموظفين بدوام كامل ممن أمضوا ستة أشهر في الخدمة.'),
+    h('النطاق والأهلية',2),p('يحق للموظف العمل عن بُعد يومين في الأسبوع بعد موافقة المدير المباشر. أظهر الاستطلاع الداخلي أن 68% من الموظفين يفضّلون النموذج الهجين، وأن 12% يفضّلون الحضور الكامل. يُستثنى من السياسة موظفو خدمة العملاء في الفروع وموظفو الأمن والسلامة الذين تتطلب طبيعة عملهم الحضور اليومي إلى مقر الشركة والتواصل المباشر مع المراجعين والزوار طوال ساعات الدوام الرسمي.'),
+    h('التجهيزات والتكاليف',2),p('تصرف الشركة بدل تجهيز لمرة واحدة قدره 1,500 ريال لكل موظف مؤهل، وبدل إنترنت شهري قدره 150 ريال. يلتزم الموظف باستخدام الحاسوب المحمول المصروف له من إدارة تقنية المعلومات فقط.'),
+    p('تُقدَّر التكلفة السنوية للبرنامج بنحو 2.4 مليون ريال، مقابل وفر متوقع في المساحات المكتبية بنسبة 18%.'),
+    h('أمن المعلومات',2),p('يُمنع حفظ ملفات العمل على أجهزة شخصية. يتصل الموظف بأنظمة الشركة عبر الشبكة الخاصة الافتراضية فقط. تُبلَّغ الحوادث الأمنية خلال 24 ساعة.'),
+    p('للاستفسار تواصل مع مسؤولة السياسة سارة الأحمد على sara.ahmed@example.com أو على الرقم 0551234567.'),
+    h('المراجعة',2),p('تُراجع هذه السياسة في 30 يونيو 2027. المستند للاستخدام الداخلي.')],
+    tables:[{at:3,rows:[['الإدارة','عدد الموظفين','المؤهلون','نسبة التأهل'],['تقنية المعلومات','42','40','95%'],['المالية','28','22','79%'],['الموارد البشرية','15','13','87%'],['العمليات','61','30','49%'],['خدمة العملاء','54','8','15%']]}]}); }
+const DOC_MANUAL=[
+ {id:'class',t:'حُدّد تصنيف المستند (عام، داخلي، سري)',r:'ISO/IEC 27001 الملحق أ: تصنيف المعلومات'},
+ {id:'share',t:'مشاركة المستند مصرّح بها لمن سيستلمه',r:'GDPR م.5(1)(و) و32 · نظام حماية البيانات الشخصية: الإفصاح'},
+ {id:'basis',t:'يوجد أساس نظامي لمعالجة ما في المستند من بيانات شخصية',r:'GDPR م.6 · نظام حماية البيانات الشخصية'},
+ {id:'redact',t:'راجع إنسان نسخة الطمس قبل إرسالها',r:'ممارسة موصى بها: الطمس الآلي يخطئ'},
+ {id:'retain',t:'حُدّدت مدة الاحتفاظ بالمستند',r:'GDPR م.5(1)(هـ)'}];
+const DSTOP=new Set(('التي الذي الذين هناك هنا حيث كما لكن بل فقط ايضا ذلك تلك هؤلاء له لها لهم به بها فيه فيها منه منها عليه عليها اليه اليها وقد وهو وهي لان عندما خلال حول دون ضمن بعض جميع اي سوف ليس ليست كانوا يكون تكون تم يتم وتم وذلك وكذلك لدى نحو منذ هذه هذا ومن وفي وعلى ولا وما وان فان الا انه انها لكل لذلك التى الى علي '+'was were been has have had not but from they their which will would can could should its into than then there these those such also may more most other some any all our your we you he she his her them').split(/\s+/).map(AR_NORM).concat([...STOP]));
+const tok=s=>s.match(/[\p{L}\p{M}]+/gu)||[];
+const stem=w=>AR_NORM(w).replace(/^(وال|بال|كال|فال|لل|ال)(?=.{3,})/,'');
+const isStop=w=>{ const n=AR_NORM(w); return n.length<3||DSTOP.has(n)||DSTOP.has(n.replace(/^[وف]/,''))||DSTOP.has(stem(w)); };
+const MON='يناير|فبراير|مارس|أبريل|ابريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر|كانون الثاني|شباط|آذار|نيسان|أيار|حزيران|تموز|آب|أيلول|تشرين الأول|تشرين الثاني|كانون الأول|محرم|ربيع الأول|ربيع الآخر|جمادى الأولى|جمادى الآخرة|رجب|شعبان|رمضان|شوال|ذو القعدة|ذو الحجة|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+const FACTS={'تواريخ':new RegExp(`(?<!\\d)\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}(?!\\d)|(?<!\\d)\\d{1,2}[-/]\\d{1,2}[-/]\\d{2,4}(?!\\d)|(?<!\\d)\\d{1,2}\\s+(?:${MON})\\s+\\d{4}|(?:${MON})\\s+\\d{1,2},?\\s+\\d{4}|(?<!\\d)1[34]\\d{2}\\s?هـ`,'gi'),
+  'نسب مئوية':/\d+(?:[.,]\d+)?\s?[%٪]/g,
+  'مبالغ مالية':/[$€£]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:مليون|مليار|ألف|million|billion))?|\d[\d,]*(?:\.\d+)?\s?(?:مليون|مليار|ألف|million|billion)?\s?(?:ريال(?:اً)?|ر\.س|SAR|USD|دولار|درهم|AED|دينار|جنيه|EUR|يورو|QAR|KWD|EGP)/gi,
+  'روابط':/https?:\/\/[^\s<>"')\]]+|www\.[^\s<>"')\]]+/gi};
+const maskV=v=>v.length<=4?'••••':v.slice(0,2)+'•'.repeat(Math.min(8,v.length-4))+v.slice(-2);
+function loadDoc(d){ D=d; D.checks={}; S.mode='doc'; TABS=TABS_D; cur='dsum'; analyzeDoc(); render(); }
+function analyzeDoc(){ const where=b=>b.page?'ص '+b.page:'فقرة '+b.i, paras=D.blocks.filter(b=>b.t==='p'); D.blocks.forEach((b,i)=>b.i=i+1);
+  const sents=[]; paras.forEach(b=>b.text.split(/(?<=[.!?؟…])\s+/).forEach(s=>{ const w=tok(s); if(w.length) sents.push({text:s.trim(),w,b}); }));
+  const words=sents.reduce((a,s)=>a+s.w.length,0),freq=new Map(); let ar=0;
+  sents.forEach(s=>s.w.forEach(w=>{ if(/[؀-ۿ]/.test(w)) ar++; if(isStop(w)) return; const k=stem(w); if(!freq.has(k)) freq.set(k,{n:0,forms:new Map()}); const e=freq.get(k); e.n++; e.forms.set(w,(e.forms.get(w)||0)+1); }));
+  const surface=e=>[...e.forms].sort((a,b)=>b[1]-a[1])[0][0], kw=[...freq].map(([k,e])=>[surface(e),e.n,k]).sort((a,b)=>b[1]-a[1]);
+  const bi=new Map(); sents.forEach(s=>{ for(let i=0;i+1<s.w.length;i++){ if(isStop(s.w[i])||isStop(s.w[i+1])) continue; const k=stem(s.w[i])+' '+stem(s.w[i+1]); if(!bi.has(k)) bi.set(k,[s.w[i]+' '+s.w[i+1],0]); bi.get(k)[1]++; } });
+  const bigrams=[...bi.values()].filter(x=>x[1]>=2).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  const types=new Set(sents.flatMap(s=>s.w.map(stem))).size, lens=sents.map(s=>s.w.length).sort((a,b)=>a-b), long=sents.filter(s=>s.w.length>35);
+  const wt=new Map(kw.slice(0,40).map(k=>[k[2],k[1]])), keyS=sents.filter(s=>s.w.length>=8&&s.w.length<=45).map((s,i)=>({s,i,sc:s.w.reduce((a,w)=>a+(wt.get(stem(w))||0),0)/Math.sqrt(s.w.length)})).sort((a,b)=>b.sc-a.sc).slice(0,5).sort((a,b)=>a.i-b.i).map(x=>x.s);
+  /* sections */
+  const secs=[]; let curS={title:'قبل أول عنوان',level:0,words:0,paras:0}; D.blocks.forEach(b=>{ if(b.t==='h'){ if(curS.words||curS.level) secs.push(curS); curS={title:b.text,level:b.level,words:0,paras:0,where:where(b)}; } else{ curS.words+=tok(b.text).length; curS.paras++; } }); if(curS.words||curS.level) secs.push(curS);
+  /* facts and personal data, over paragraphs and table cells */
+  const units=paras.map(b=>({text:latin(b.text),loc:where(b)})).concat(D.tables.flatMap((t,ti)=>t.rows.flat().filter(Boolean).map(c=>({text:latin(c),loc:'جدول '+(ti+1)}))));
+  const collect=(rx,ok)=>{ const m=new Map(); units.forEach(u=>{ rx.lastIndex=0; let x; while((x=rx.exec(u.text))){ if(!x[0].length){ rx.lastIndex++; continue; } if(ok&&!ok(x[0])) continue; const v=x[0].trim(); if(!m.has(v)) m.set(v,{n:0,loc:u.loc,ctx:u.text.slice(Math.max(0,x.index-40),x.index+v.length+40)}); m.get(v).n++; } }); return [...m].map(([v,o])=>({v,...o})).sort((a,b)=>b.n-a.n); };
+  const facts={}; for(const k in FACTS) facts[k]=collect(FACTS[k]);
+  const pii={}; for(const k in RX){ const r=collect(RX[k],m=>piiOk(k,m)); if(r.length) pii[k]=r; }
+  const marks=collect(/(?<![\p{L}\p{M}])(?:سري للغاية|سرّي|سري|خاص وسري|للاستخدام الداخلي|confidential|restricted|internal use only)(?![\p{L}\p{M}])/giu);
+  const dupP=paras.length-new Set(paras.filter(b=>b.text.length>40).map(b=>AR_NORM(b.text))).size-paras.filter(b=>b.text.length<=40).length;
+  const scanned=D.kind==='PDF'&&words<20*(D.pages||1), piiN=Object.values(pii).reduce((a,r)=>a+r.reduce((x,y)=>x+y.n,0),0), author=D.meta&&D.meta.Author;
+  const auto=[
+   {t:'نص قابل للقراءة آلياً',s:scanned?'bad':'ok',d:scanned?'المستند يبدو مصوّراً بلا طبقة نصية. مستبين لا يتعرّف على الحروف ضوئياً (OCR)، فالتحليل ناقص.':`${words} كلمة مستخرجة.`},
+   {t:'معرّفات شخصية مباشرة في النص',s:piiN?'bad':'ok',d:piiN?Object.entries(pii).map(([k,r])=>`${k}: ${r.reduce((x,y)=>x+y.n,0)}`).join('، ')+'. اطمسها قبل المشاركة.':'لم يُرصد شيء بالأنماط المعروفة. أسماء الأشخاص لا تُرصد.'},
+   {t:'بيانات وصفية تكشف أشخاصاً',s:D.kind!=='PDF'?'na':author?'warn':'ok',d:D.kind!=='PDF'?'لا نقرأ خصائص ملفات Word. افحصها من «فحص المستند» في Word.':author?`حقل المؤلف يحتوي «${author}». احذفه إن لم يكن مقصوداً.`:'حقل المؤلف فارغ.'},
+   {t:'عبارات تصنيف أو سرية',s:marks.length?'warn':'ok',d:marks.length?`وردت: ${marks.map(m=>'«'+m.v+'» ('+m.n+')').join('، ')}. تأكد أن مشاركة المستند مصرّح بها.`:'لم ترد عبارة سرية أو استخدام داخلي.'},
+   {t:'روابط خارجية',s:facts['روابط'].length?'warn':'ok',d:facts['روابط'].length?`${facts['روابط'].length} رابط. تحقق أنها لا تكشف أنظمة داخلية.`:'لا روابط.'}];
+  const app=auto.filter(x=>x.s!=='na'),man=DOC_MANUAL.filter(m=>D.checks[m.id]).length;
+  DA={paras,sents,words,chars:paras.reduce((a,b)=>a+b.text.length,0),ar:words?ar/words:0,types,ttr:words?types/words:0,kw,bigrams,keyS,secs,facts,pii,piiN,marks,scanned,dupP:Math.max(0,dupP),
+    medS:lens.length?ST.q(lens,.5):0,avgS:words/(sents.length||1),long,heads:D.blocks.filter(b=>b.t==='h'),auto,pass:app.filter(x=>x.s==='ok').length+man,total:app.length+DOC_MANUAL.length,where};
+  DA.ins=docInsights(); }
+function docInsights(){ const st=[],wk=[],df=[],ac=[],cn=[],a=DA,add=(arr,t,e)=>arr.push({t,e}),nf=k=>a.facts[k].reduce((x,y)=>x+y.n,0);
+  if(a.scanned){ add(df,'المستند مصوّر بلا طبقة نصية','لا يمكن تحليل محتواه دون تعرّف ضوئي على الحروف'); add(ac,'حوّل المستند إلى نص بأداة OCR ثم أعد رفعه',`${a.words} كلمة فقط في ${D.pages} صفحة`); return {st,wk,df,ac,cn}; }
+  if(a.words<50){ add(cn,'النص أقصر من أن يُقيَّم',`${a.words} كلمة`); return {st,wk,df,ac,cn}; }
+  const top=a.kw.slice(0,6).map(k=>k[0]); add(cn,`يدور المستند حول: ${top.join('، ')}`,`أكثر المفردات تكراراً من ${a.words} كلمة في ${a.paras.length} فقرة`);
+  if(a.secs.filter(s=>s.level).length){ const big=[...a.secs].sort((x,y)=>y.words-x.words)[0]; add(cn,`أكبر الأقسام «${big.title}»`,`${big.words} كلمة، أي ${pc(big.words/a.words,0)} من النص`); }
+  add(cn,`النص ${a.ar>.7?'عربي':a.ar<.3?'غير عربي في معظمه':'مزدوج اللغة'}`,`${pc(a.ar,0)} من الكلمات بحروف عربية`);
+  const H=a.heads.length,per=a.words/(H||1);
+  if(H>=3&&per<=600) add(st,'بنية واضحة بعناوين',`${H} عنواناً، بمعدل ${f(per,0)} كلمة لكل قسم`); else if(!H&&a.words>400) { add(wk,'لا عناوين تقسّم النص',`${a.words} كلمة في كتلة واحدة`); add(ac,'قسّم المستند بعناوين فرعية','قسم لكل 300 إلى 500 كلمة تقريباً'); } else if(H&&per>900){ add(wk,'الأقسام طويلة قياساً بعدد العناوين',`${f(per,0)} كلمة لكل عنوان`); add(ac,'أضف عناوين فرعية داخل الأقسام الطويلة',a.secs.filter(s=>s.words>900).map(s=>`«${s.title}»: ${s.words} كلمة`).slice(0,3).join('، ')||`${f(per,0)} كلمة لكل عنوان`); }
+  const ls=a.long.length/(a.sents.length||1);
+  if(a.medS<=22&&ls<.08) add(st,'جمل معتدلة الطول',`وسيط طول الجملة ${f(a.medS,0)} كلمة، و${pc(ls,0)} فقط تتجاوز 35 كلمة`); else if(ls>=.15||a.medS>30){ add(wk,'جمل طويلة تُتعب القارئ',`${a.long.length} جملة (${pc(ls,0)}) تتجاوز 35 كلمة، والوسيط ${f(a.medS,0)}`); add(ac,'اقسم الجمل التي تتجاوز 35 كلمة','أطولها: «'+[...a.long].sort((x,y)=>y.w.length-x.w.length)[0].text.slice(0,90)+'…»'); }
+  const nums=nf('نسب مئوية')+nf('مبالغ مالية'),dates=nf('تواريخ');
+  if(nums>=3) add(st,'مدعوم بأرقام',`${nf('نسب مئوية')} نسبة مئوية و${nf('مبالغ مالية')} مبلغ مالي`); else if(a.words>500&&!nums){ add(wk,'لا أرقام تدعم النص',`لا نسب ولا مبالغ في ${a.words} كلمة`); add(ac,'ادعم الادعاءات الرئيسة بأرقام ومصادرها','إن كان المستند وصفياً بطبيعته فتجاهل هذه التوصية'); }
+  if(dates) add(st,'محدَّد زمنياً',`${dates} تاريخ مذكور`); else if(a.words>300){ add(wk,'لا تواريخ في المستند','يصعب معرفة متى كُتب أو متى يسري'); add(ac,'أضف تاريخ الإصدار وتاريخ السريان أو المراجعة','لم يُرصد أي تاريخ'); }
+  if(D.tables.length) add(st,'يعرض بيانات في جداول',`${D.tables.length} جدول`);
+  if(a.words>300&&a.ttr<.25){ add(wk,'تكرار مرتفع في المفردات',`${pc(a.ttr,0)} فقط من الكلمات فريدة الجذر`); }
+  if(a.dupP>0){ add(df,'فقرات مكررة حرفياً',`${a.dupP} فقرة`); add(ac,'احذف الفقرات المكررة',`${a.dupP} فقرة مطابقة لأخرى`); }
+  const has=rx=>a.heads.some(h=>rx.test(AR_NORM(h.text)));
+  if(H>=3&&a.words>600){ if(!has(/ملخص|مقدمه|تمهيد|نبذه|summary|introduction|overview|abstract/)) { add(wk,'لا قسم للملخص أو المقدمة بين العناوين','لم يرد عنوان يدل على ملخص أو مقدمة'); add(ac,'أضف ملخصاً في أول المستند','ثلاث إلى خمس جمل تذكر الغرض والنتيجة'); }
+    if(!has(/توصي|خاتمه|خلاصه|نتائج|استنتاج|conclusion|recommend|next steps|findings/)) { add(wk,'لا قسم للخاتمة أو التوصيات بين العناوين','لم يرد عنوان يدل على خاتمة أو توصيات'); add(ac,'اختم المستند بقسم للنتائج أو التوصيات','إن كان المستند سياسة أو عقداً فقد لا يلزم'); } }
+  const thin=a.secs.filter(s=>s.level&&s.words<8); if(thin.length) add(df,'عناوين بلا محتوى يُذكر تحتها',thin.slice(0,4).map(s=>`«${s.title}» (${s.words} كلمة)`).join('، ')+(D.kind==='PDF'?'. في PDF قد يكون السبب خطأ في رصد العناوين.':''));
+  if(a.piiN){ add(df,'المستند يحتوي معرّفات شخصية مباشرة',Object.entries(a.pii).map(([k,r])=>`${k}: ${r.reduce((x,y)=>x+y.n,0)}`).join('، ')); add(ac,'اطمس المعرّفات الشخصية قبل المشاركة','نزّل نسخة النص المطموسة من تبويب الامتثال وراجعها يدوياً'); }
+  if(a.marks.length) add(df,'المستند موسوم بالسرية أو الاستخدام الداخلي',a.marks.map(m=>'«'+m.v+'»').join('، '));
+  if(D.meta&&D.meta.Author) add(df,'البيانات الوصفية تكشف اسم المؤلف',`«${D.meta.Author}»`);
+  add(cn,`الحالة الشكلية للمستند ${df.length+wk.length>=5?'تحتاج مراجعة قبل الاعتماد':df.length+wk.length>=2?'مقبولة مع ملاحظات':'جيدة'}`,`${st.length} نقطة قوة، ${wk.length} نقطة ضعف، ${df.length} خلل`);
+  return {st,wk,df,ac,cn}; }
+function factTable(rows,mask){ return rows.length?`<div class="scroll"><table><thead><tr><th>القيمة</th><th class="n">التكرار</th><th>الموضع</th><th>السياق</th></tr></thead><tbody>${rows.slice(0,15).map(r=>`<tr><td class="num">${esc(mask?maskV(r.v):r.v)}</td><td class="n">${r.n}</td><td>${esc(r.loc)}</td><td class="small muted">${esc(mask?scrub(r.ctx):r.ctx)}</td></tr>`).join('')}</tbody></table></div>${rows.length>15?`<p class="muted small">تُعرض أول 15 من ${rows.length}.</p>`:''}`:'<p class="muted">لم يُرصد شيء.</p>'; }
+function kwic(q){ const n=AR_NORM(q); if(n.length<2) return ''; const out=[]; for(const b of DA.paras){ const t=b.text,idx=AR_NORM(t).indexOf(n); if(idx>=0){ out.push(`<tr><td>${esc(DA.where(b))}</td><td class="small">${esc(t.slice(Math.max(0,idx-60),idx+n.length+80))}</td></tr>`); if(out.length>=20) break; } } return out.length?`<div class="scroll"><table><tbody>${out.join('')}</tbody></table></div>`:'<p class="muted">لا نتائج.</p>'; }
+const TABS_D=[['dsum','الملخص'],['dins','التقييم والتوصيات'],['dstruct','البنية والجداول'],['dwords','المفردات'],['dfacts','الأرقام والتواريخ'],['dcomp','الامتثال'],['drep','التقرير']];
+const PD={
+ dsum(){ const a=DA; return `<div class="tiles">
+   ${D.pages?`<div class="tile"><span class="k">الصفحات</span><span class="v">${D.pages}</span><span class="s">${D.kind}</span></div>`:''}
+   <div class="tile"><span class="k">الكلمات</span><span class="v">${a.words}</span><span class="s">${a.paras.length} فقرة · ${a.sents.length} جملة</span></div>
+   <div class="tile"><span class="k">زمن القراءة</span><span class="v">${Math.max(1,Math.round(a.words/200))}</span><span class="s">دقيقة، بمعدل 200 كلمة</span></div>
+   <div class="tile"><span class="k">وسيط طول الجملة</span><span class="v">${f(a.medS,0)}</span><span class="s">كلمة · ${a.long.length} جملة فوق 35</span></div>
+   <div class="tile"><span class="k">العناوين والجداول</span><span class="v">${a.heads.length} / ${D.tables.length}</span><span class="s">عنوان / جدول</span></div>
+   <div class="tile"><span class="k">جاهزية الامتثال</span><span class="v" style="font-family:var(--body);direction:rtl">${a.pass} من ${a.total}</span><span class="s">${a.piiN} معرّف شخصي مرصود</span></div></div>
+  <div class="sheet"><h2>الاستنتاجات</h2>${insList(a.ins.cn,'')}</div>
+  <div class="sheet"><header><h2>جمل مفتاحية</h2><span class="muted small">مستخرجة آلياً بحسب كثافة المفردات المتكررة، وليست تلخيصاً</span></header>${a.keyS.length?`<ul class="clean">${a.keyS.map(s=>`<li>${esc(s.text)} <span class="muted small">(${esc(a.where(s.b))})</span></li>`).join('')}</ul>`:'<p class="muted">النص أقصر من أن تُستخرج منه جمل.</p>'}</div>
+  <div class="sheet"><h2>أكثر المفردات تكراراً</h2>${a.kw.length?barList(a.kw.slice(0,12).map(k=>[k[0],k[1]]),a.words):'<p class="muted">لا مفردات.</p>'}</div>`; },
+ dins(){ return insightsHTML(DA.ins,true); },
+ dstruct(){ const a=DA,mx=Math.max(...a.secs.map(s=>s.words),1); return `<div class="sheet"><header><h2>مخطط المستند</h2><span class="muted small">${a.heads.length} عنوان${D.kind==='PDF'?' · العناوين في PDF تُستنتج من حجم الخط وقد تخطئ':''}</span></header>
+   ${a.secs.length?`<div class="bars">${a.secs.map(s=>`<div class="brow" data-tip="${esc(s.title)}: ${s.words} كلمة في ${s.paras} فقرة"><div class="blab" style="padding-inline-start:${Math.max(0,s.level-1)*14}px">${esc(s.title)}</div><div class="btrack"><div class="bfill" style="width:${100*s.words/mx}%"></div></div><div class="bval">${s.words} كلمة</div></div>`).join('')}</div>`:'<p class="muted">لا محتوى.</p>'}</div>
+  ${D.tables.length?D.tables.map((t,i)=>`<div class="sheet"><header><h3>جدول ${i+1}</h3><span class="muted small">${t.rows.length} صف × ${Math.max(...t.rows.map(r=>r.length))} عمود</span></header><div class="scroll"><table><tbody>${t.rows.slice(0,6).map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${t.rows.length>=3&&t.rows[0].length>=2?`<div class="row"><button data-dtable="${i}">حلّل هذا الجدول إحصائياً</button><span class="muted small">ينقلك إلى وضع الجداول، وتعود إلى المستند من تبويب البيانات.</span></div>`:''}</div>`).join(''):`<div class="sheet"><p class="muted">${D.kind==='PDF'?'لا نستخرج الجداول من PDF. انسخ الجدول والصقه في وضع الجداول، أو ارفع أصله بصيغة Excel أو Word.':'لا جداول في المستند.'}</p></div>`}`; },
+ dwords(){ const a=DA; return `<div class="grid2"><div class="sheet"><h2>المفردات</h2>${a.kw.length?barList(a.kw.slice(0,25).map(k=>[k[0],k[1]]),a.words):'<p class="muted">لا مفردات.</p>'}<p class="muted small">النسبة من إجمالي الكلمات. تُجمع صيغ الكلمة بعد حذف أداة التعريف، دون تحليل صرفي.</p></div>
+   <div class="sheet"><h2>العبارات الثنائية</h2>${a.bigrams.length?barList(a.bigrams,a.words):'<p class="muted">لا عبارة تكررت مرتين.</p>'}<p><span class="stat">${a.types} / ${a.words} = ${pc(a.ttr,0)}</span> نسبة المفردات الفريدة إلى الكلمات.</p></div></div>
+  <div class="sheet"><h2>ابحث في المستند</h2><div class="row"><input type="text" id="dq" placeholder="كلمة أو عبارة" style="flex:1;min-width:180px"><button id="btnDq">ابحث</button></div><div id="dqOut"></div></div>
+  ${a.long.length?`<div class="sheet"><h2>أطول الجمل</h2><ul class="clean">${[...a.long].sort((x,y)=>y.w.length-x.w.length).slice(0,3).map(s=>`<li>${esc(s.text.slice(0,300))}${s.text.length>300?'…':''} <span class="muted small">(${s.w.length} كلمة، ${esc(a.where(s.b))})</span></li>`).join('')}</ul></div>`:''}`; },
+ dfacts(){ return Object.keys(FACTS).map(k=>`<div class="sheet"><header><h2>${k}</h2><span class="muted small">${DA.facts[k].length} قيمة مختلفة</span></header>${factTable(DA.facts[k])}</div>`).join('')+'<p class="muted small">الرصد بأنماط نصية. تاريخ مكتوب بالكلمات كلها أو مبلغ بلا عملة لا يُرصد.</p>'; },
+ dcomp(){ const a=DA; return `<div class="sheet"><header><h2>جاهزية الامتثال</h2><b>${a.pass} من ${a.total}</b></header><div class="meter"><div style="width:${100*a.pass/a.total}%"></div></div><p class="muted small">قائمة استرشادية قبل مشاركة المستند. ليست شهادة امتثال ولا رأياً قانونياً.</p></div>
+  <div class="sheet"><h2>فحوص آلية على المستند</h2><div class="scroll"><table><tbody>${a.auto.map(x=>`<tr><td style="white-space:nowrap">${pill(x.s)}</td><td><b>${x.t}</b><br><span class="small">${esc(x.d)}</span></td></tr>`).join('')}</tbody></table></div>
+   <div class="row"><button class="primary" id="btnRedact">نزّل نصاً مطموس المعرّفات (TXT)</button><span class="muted small">يُطمس ما يطابق أنماط البريد والهاتف والهوية وعنوان IP. أسماء الأشخاص تبقى، فراجع النص يدوياً.</span></div></div>
+  ${Object.keys(a.pii).map(k=>`<div class="sheet"><header><h3>${k}</h3><span class="muted small">القيم معروضة مقنّعة</span></header>${factTable(a.pii[k],true)}</div>`).join('')}
+  ${D.meta?`<div class="sheet"><h2>البيانات الوصفية للملف</h2><div class="scroll"><table><tbody>${Object.entries(D.meta).map(([k,v])=>`<tr><th>${k}</th><td>${esc(v||'—')}</td></tr>`).join('')}</tbody></table></div></div>`:''}
+  <div class="sheet"><h2>ضوابط تؤكدها أنت</h2><div>${DOC_MANUAL.map(m=>`<label class="check"><input type="checkbox" id="dc-${m.id}" data-dcheck="${m.id}"${D.checks[m.id]?' checked':''}><span>${m.t}</span><small>${m.r}</small></label>`).join('')}</div></div>`; },
+ drep(){ return `<div class="sheet noprint"><h2>التقرير</h2><div class="row"><button class="primary" id="btnDRep">نزّل التقرير (HTML)</button>${window.claude?'':'<button id="btnPrint">اطبع أو احفظ PDF</button>'}</div></div><div class="paper" id="paper">${docReport()}</div>`; }
+};
+function docReport(){ const a=DA,I=a.ins,today=new Date().toISOString().slice(0,10),sec=(t,arr)=>arr.length?`<section><h2>${t}</h2>${insList(arr,'')}</section>`:'';
+  return `<section><p class="muted small">تقرير تحليل مستند · ${today}${D.sample?' · مستند تجريبي':''}</p><h1>${esc(D.name.replace(/\.[^.]+$/,''))}</h1></section>
+  <section><h2>بطاقة المستند</h2><div class="scroll"><table><tbody><tr><th>النوع</th><td>${D.kind}${D.pages?' · '+D.pages+' صفحة':''}</td></tr><tr><th>الحجم</th><td>${a.words} كلمة · ${a.sents.length} جملة · ${a.paras.length} فقرة</td></tr><tr><th>البنية</th><td>${a.heads.length} عنوان · ${D.tables.length} جدول</td></tr><tr><th>وسيط طول الجملة</th><td>${f(a.medS,0)} كلمة</td></tr><tr><th>أبرز المفردات</th><td>${esc(a.kw.slice(0,10).map(k=>k[0]).join('، '))}</td></tr></tbody></table></div></section>
+  ${sec('الاستنتاجات',I.cn)}${sec('نقاط القوة',I.st)}${sec('نقاط الضعف',I.wk)}${sec('الخلل',I.df)}
+  ${I.ac.length?`<section><h2>التطوير المطلوب</h2><ol class="clean">${I.ac.map(x=>`<li><b>${esc(x.t)}</b><br><span class="small muted">${esc(x.e)}</span></li>`).join('')}</ol></section>`:''}
+  ${a.keyS.length?`<section><h2>جمل مفتاحية</h2><ul class="clean">${a.keyS.map(s=>`<li>${esc(s.text)}</li>`).join('')}</ul></section>`:''}
+  <section><h2>الامتثال</h2><p>الجاهزية <b>${a.pass} من ${a.total}</b></p><div class="scroll"><table><tbody>${a.auto.map(x=>`<tr><td style="white-space:nowrap">${pill(x.s)}</td><td><b>${x.t}</b> — <span class="small">${esc(x.d)}</span></td></tr>`).join('')}${DOC_MANUAL.map(m=>`<tr><td style="white-space:nowrap">${pill(D.checks[m.id]?'ok':'warn')}</td><td>${m.t} <span class="muted small">(${m.r})</span></td></tr>`).join('')}</tbody></table></div></section>
+  <section><h2>حدود التحليل</h2><ul class="clean"><li>التقييم يقيس بنية النص وخصائصه القابلة للعدّ، ولا يحكم على صحة المحتوى.</li><li>الجمل المفتاحية مستخرجة آلياً وليست تلخيصاً.</li><li>رصد البيانات الشخصية بالأنماط، وأسماء الأشخاص لا تُرصد.</li>${D.kind==='PDF'?'<li>عناوين PDF تُستنتج من حجم الخط، وجداوله لا تُستخرج.</li>':''}</ul></section>`; }
+
+P.ins=()=>insightsHTML(A.ins,false); Object.assign(P,PD);
+
 /* ============ rendering & events ============ */
 function showTab(){ TABS.forEach(([k])=>{ const p=$('#p-'+k),t=$('#tab-'+k); if(p) p.hidden=k!==cur; if(t){ t.setAttribute('aria-selected',k===cur); t.tabIndex=k===cur?0:-1; } }); }
-function render(){ const act=document.activeElement&&document.activeElement.id, paste=$('#paste')?$('#paste').value:'', hadTest=$('#testOut')&&$('#testOut').innerHTML!=='';
-  $('#banner').hidden=!S.sample; if(S.sample) $('#banner').textContent='تعرض الصفحة الآن بيانات تجريبية مولّدة آلياً (242 استجابة افتراضية). حمّل ملفك لتحليل بياناتك.';
+function panelHTML(k){ if(P[k]) return P[k](); const m=MODS.find(x=>x.id===k); return m?modCall(m,'render'):''; }
+function render(){ const act=document.activeElement&&document.activeElement.id, paste=$('#paste')?$('#paste').value:'', hadTest=$('#testOut')&&$('#testOut').innerHTML!=='', doc=S.mode==='doc';
+  TABS=tabsFor(doc?'doc':'table'); if(!TABS.some(t=>t[0]===cur)) cur=TABS[0][0];
+  const b=$('#banner'); b.hidden=!(doc?D.sample:S.sample); b.textContent=doc?'تعرض الصفحة الآن مستنداً تجريبياً مكتوباً للعرض. حمّل ملفك لتحليل محتواه.':'تعرض الصفحة الآن بيانات تجريبية مولّدة آلياً (242 استجابة افتراضية). حمّل ملفك لتحليل بياناتك.';
   $('#tabs').innerHTML=TABS.map(([k,l])=>`<button role="tab" id="tab-${k}" data-tab="${k}" aria-controls="p-${k}" aria-selected="${k===cur}">${l}</button>`).join('');
-  $('#panels').innerHTML=TABS.map(([k])=>`<section class="panel" role="tabpanel" aria-labelledby="tab-${k}" id="p-${k}"${k===cur?'':' hidden'}>${P[k]()}</section>`).join('');
+  $('#panels').innerHTML=TABS.map(([k])=>`<section class="panel" role="tabpanel" aria-labelledby="tab-${k}" id="p-${k}"${k===cur?'':' hidden'}>${panelHTML(k)}</section>`).join('');
   showTab(); if($('#paste')) $('#paste').value=paste;
-  if(S.pair&&$('#va')&&S.cols[+S.pair[0]]&&S.cols[+S.pair[1]]&&$('#va').querySelector(`option[value="${S.pair[0]}"]`)&&$('#vb').querySelector(`option[value="${S.pair[1]}"]`)){ $('#va').value=S.pair[0]; $('#vb').value=S.pair[1]; if(hadTest) runTest(); }
+  if(!doc&&S.pair&&$('#va')&&S.cols[+S.pair[0]]&&S.cols[+S.pair[1]]&&$('#va').querySelector(`option[value="${S.pair[0]}"]`)&&$('#vb').querySelector(`option[value="${S.pair[1]}"]`)){ $('#va').value=S.pair[0]; $('#vb').value=S.pair[1]; if(hadTest) runTest(); }
   if(act){ const e=document.getElementById(act); if(e) e.focus({preventScroll:true}); } }
 function runTest(){ const a=S.cols[+$('#va').value],b=S.cols[+$('#vb').value],o=$('#testOut'); S.pair=[$('#va').value,$('#vb').value]; if(!a||!b||a===b){ o.innerHTML='<p class="muted">اختر متغيرين مختلفين.</p>'; return; }
   const t=testPair(a,b); if(t&&(Number.isNaN(t.p)||Number.isNaN(t.es))){ o.innerHTML='<p class="muted">تعذّر حساب الاختبار: أحد المتغيرين أو إحدى المجموعات بلا تباين.</p>'; return; } if(!t){ o.innerHTML='<p class="muted">لا يمكن اختبار هذا الزوج: نحتاج مجموعتين على الأقل في كل منهما مشاهدتان.</p>'; return; }
@@ -466,8 +683,15 @@ function workbook(){ const wb=XLSX.utils.book_new(),add=(n,r)=>XLSX.utils.book_a
   wb.Workbook={Views:[{RTL:true}]}; return XLSX.write(wb,{type:'array',bookType:'xlsx'}); }
 document.addEventListener('click',e=>{ const t=e.target.closest('button,[data-tab]'); if(!t) return;
   if(t.dataset.tab){ cur=t.dataset.tab; showTab(); return; }
+  for(const m of MODS) if(modCall(m,'click',t,e)===true) return;
   const id=t.id;
   if(id==='btnSample'){ S.pair=null; sampleData(); }
+  else if(id==='btnSampleDoc') sampleDoc();
+  else if(t.dataset.dtable){ const tb=D.tables[+t.dataset.dtable]; loadTable(tb.rows.map(r=>r.slice()),'جدول '+(+t.dataset.dtable+1)+' من '+D.name); cur='data'; render(); }
+  else if(id==='btnBackDoc'){ S.mode='doc'; cur='dsum'; render(); }
+  else if(id==='btnDq') $('#dqOut').innerHTML=kwic($('#dq').value);
+  else if(id==='btnRedact') saveFile('mostabeen-redacted.txt',D.blocks.map(b=>(b.t==='h'?'\n'+'#'.repeat(b.level)+' ':'')+scrub(b.text)).join('\n')+D.tables.map((tb,i)=>'\n\n[جدول '+(i+1)+']\n'+tb.rows.map(r=>r.map(scrub).join('\t')).join('\n')).join(''),'text/plain');
+  else if(id==='btnDRep') saveFile('mostabeen-document-report.html','<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(D.name)+'</title><style>'+$('#app-style').textContent+'</style></head><body><div class="wrap" dir="rtl"><div class="paper">'+docReport()+'</div></div></body></html>','text/html');
   else if(id==='btnFile') $('#file').click();
   else if(id==='btnPaste'){ const v=$('#paste').value.replace(/^[\r\n]+|\s+$/g,''); if(v){ S.pair=null; $('#paste').value=''; loadTable(parseCSV(v),'بيانات ملصوقة'); } else toast('الصق جدولاً أولاً'); }
   else if(id==='btnTest') runTest();
@@ -481,7 +705,10 @@ document.addEventListener('click',e=>{ const t=e.target.closest('button,[data-ta
   else if(id==='btnPrint') window.print();
 });
 document.addEventListener('change',e=>{ const t=e.target;
+  for(const m of MODS) if(modCall(m,'change',t,e)===true) return;
   if(t.id==='file'&&t.files[0]){ readFile(t.files[0]); t.value=''; }
+  else if(t.id==='sheetSel'){ S.book.cur=t.value; loadTable(tableFrom(S.book.sheets[t.value]),S.book.name+' · '+t.value,false,true); }
+  else if(t.dataset.dcheck){ D.checks[t.dataset.dcheck]=t.checked; analyzeDoc(); render(); }
   else if(t.dataset.col){ const c=S.cols[+t.dataset.col],old=c.type;
     if(t.value==='scale'&&!scaleOk(c)){ toast('هذا العمود ليس مقياساً ترتيبياً: نحتاج أعداداً صحيحة من 0 إلى 10 أو تسميات معروفة'); t.value=old; return; }
     setType(c,t.value); if(t.value!=='pii') c.pii=null; S.pair=null;
@@ -498,6 +725,8 @@ document.addEventListener('dragleave',e=>{ const d=e.target.closest&&e.target.cl
 document.addEventListener('drop',e=>{ const d=e.target.closest&&e.target.closest('#drop'); if(d){ e.preventDefault(); d.classList.remove('over'); if(e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); } });
 const tip=$('#tip'); document.addEventListener('mousemove',e=>{ const t=e.target.closest&&e.target.closest('[data-tip]'); if(!t){ tip.hidden=true; return; } tip.textContent=t.dataset.tip; tip.hidden=false; const w=tip.offsetWidth; tip.style.left=Math.max(6,Math.min(innerWidth-w-6,e.clientX-w/2))+'px'; tip.style.top=(e.clientY+16)+'px'; });
 document.addEventListener('keydown',e=>{ const t=e.target.closest&&e.target.closest('[role=tab]'); if(!t||(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')) return; const i=TABS.findIndex(x=>x[0]===cur),j=(i+(e.key==='ArrowLeft'?1:-1)+TABS.length)%TABS.length; cur=TABS[j][0]; showTab(); $('#tab-'+cur).focus(); e.preventDefault(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.id==='dq'){ $('#dqOut').innerHTML=kwic(e.target.value); } });
+
 sampleData();
 </script>
 </body></html>
