@@ -25,8 +25,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Test the statistics engine
-        run: node tests/stats.test.js
+      - name: Run tests
+        run: for f in tests/*.test.js; do node "$f" || exit 1; done
       - name: Build pages
         run: |
           node build.js
