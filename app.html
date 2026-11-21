@@ -1,0 +1,469 @@
+<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style></head><body>
+<title>مستبين لتحليل الاستبانات</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alexandria:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap">
+<style id="app-style">
+/* Layout: a working bench. One header, a tab rail, then a single reading column of result sheets. */
+:root{
+  --bg:#f1f5f4; --surface:#fcfdfc; --ink:#10282b; --ink2:#465d5c; --muted:#75878a; --line:#d5dedc;
+  --accent:#0a6b6b; --accent-ink:#ffffff; --accent-soft:#dbebe9; --mark:#f3d27a;
+  --s1:#2a78d6; --neg3:#c43c3c; --neg2:#e27f7f; --neg1:#f2b8b8; --mid:#dcdcd6; --pos1:#b7d3f6; --pos2:#6da7ec; --pos3:#256abf;
+  --good:#0ca30c; --good-ink:#006300; --warn:#fab219; --crit:#d03b3b;
+  --display:"Alexandria","IBM Plex Sans Arabic",Tahoma,sans-serif;
+  --body:"IBM Plex Sans Arabic","Segoe UI",Tahoma,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0b1415; --surface:#121e1f; --ink:#e8efee; --ink2:#b3c3c1; --muted:#80928f; --line:#263637;
+  --accent:#43b8b0; --accent-ink:#04201f; --accent-soft:#16302f; --mark:#6b5514;
+  --s1:#3987e5; --mid:#4a4a46; --good-ink:#35c435; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0b1415; --surface:#121e1f; --ink:#e8efee; --ink2:#b3c3c1; --muted:#80928f; --line:#263637;
+  --accent:#43b8b0; --accent-ink:#04201f; --accent-soft:#16302f; --mark:#6b5514;
+  --s1:#3987e5; --mid:#4a4a46; --good-ink:#35c435; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.7}
+.wrap{max-width:1080px;margin-inline:auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 64px;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;line-height:1.35}
+h1{font-size:1.35rem} h2{font-size:1.15rem} h3{font-size:.98rem;font-weight:500}
+p{margin:0} .num,td.n,th.n{font-family:var(--mono);font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
+.muted{color:var(--muted)} .small{font-size:.85rem}
+header.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.brand b{font-family:var(--display);font-size:1.5rem;color:var(--accent)}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+button,.btn{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 14px;border-radius:6px;cursor:pointer}
+button:hover,.btn:hover{border-color:var(--accent)}
+button.primary,.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+select,input[type=text],input[type=number],textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;max-width:100%}
+.banner{background:var(--mark);color:#10282b;padding:8px 14px;border-radius:6px;font-size:.9rem}
+:root[data-theme="dark"] .banner{color:#f5ecd0}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .banner{color:#f5ecd0} }
+nav.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line)}
+nav.tabs button{border:0;background:none;border-radius:0;padding:10px 14px;color:var(--ink2);white-space:nowrap;border-bottom:3px solid transparent}
+nav.tabs button[aria-selected=true]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+section.panel{display:flex;flex-direction:column;gap:18px}
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.sheet>header{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:baseline}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:2px}
+.tile .k{font-size:.82rem;color:var(--ink2)} .tile .v{font-family:var(--mono);font-size:1.7rem;line-height:1.3;direction:ltr;text-align:right}
+.tile .s{font-size:.8rem;color:var(--muted)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:start;vertical-align:top}
+th{font-weight:600;color:var(--ink2);font-size:.82rem;white-space:nowrap}
+td.n,th.n{text-align:left}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:1px 9px;border-radius:99px;font-size:.8rem;border:1px solid var(--line);white-space:nowrap}
+.pill::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.pill.ok::before{background:var(--good)} .pill.warn::before{background:var(--warn)} .pill.bad::before{background:var(--crit)}
+/* bars */
+.bars{display:flex;flex-direction:column;gap:6px}
+.brow{display:grid;grid-template-columns:minmax(90px,220px) 1fr 92px;gap:10px;align-items:center}
+.blab{font-size:.88rem;min-width:0;overflow-wrap:anywhere}
+.btrack{height:14px;display:flex}
+.bfill{background:var(--s1);height:100%;border-start-end-radius:4px;border-end-end-radius:4px;min-width:2px}
+.bval{font-family:var(--mono);font-size:.82rem;direction:ltr;text-align:left;color:var(--ink2)}
+.lhead,.lrow{display:grid;grid-template-columns:minmax(120px,300px) 1fr 54px 62px;gap:10px;align-items:center}
+.lhead{font-size:.78rem;color:var(--muted)}
+.lstack{display:flex;gap:2px;height:22px;min-width:0}
+.seg{display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.72rem;overflow:hidden;min-width:2px;color:#0b0b0b}
+.seg.w{color:#fff} .seg.m{color:var(--ink)}
+.lnum{font-family:var(--mono);font-size:.85rem;direction:ltr;text-align:left}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.8rem;color:var(--ink2)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-inline-end:5px;vertical-align:-1px}
+.hist{display:flex;align-items:flex-end;gap:2px;height:110px;direction:ltr;border-bottom:1px solid var(--line)}
+.hist div{flex:1;background:var(--s1);border-radius:4px 4px 0 0;min-height:1px}
+.haxis{display:flex;justify-content:space-between;direction:ltr;font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+.heat td,.heat th{text-align:center;padding:5px;font-size:.78rem;border:2px solid var(--surface)}
+.heat th{white-space:normal;max-width:130px;font-weight:500}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:18px}
+.stat{font-family:var(--mono);direction:ltr;unicode-bidi:isolate;background:var(--accent-soft);padding:2px 8px;border-radius:4px;display:inline-block}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+ul.clean{margin:0;padding-inline-start:20px;display:flex;flex-direction:column;gap:6px}
+.check{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:start;padding:8px 0;border-bottom:1px solid var(--line)}
+.check small{grid-column:2;color:var(--muted)}
+.meter{height:10px;background:var(--line);border-radius:5px;overflow:hidden;display:flex}
+.meter div{background:var(--accent)}
+.drop{border:2px dashed var(--line);border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:10px}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+#tip{position:fixed;z-index:50;pointer-events:none;background:var(--ink);color:var(--bg);padding:4px 9px;border-radius:5px;font-size:.8rem;max-width:260px}
+#toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));inset-inline:0;margin-inline:auto;width:fit-content;max-width:90%;background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:6px;z-index:60}
+.paper{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:clamp(18px,4vw,44px);display:flex;flex-direction:column;gap:20px}
+.paper h1{font-size:1.6rem} .paper h2{border-bottom:2px solid var(--accent);padding-bottom:4px}
+.paper section{display:flex;flex-direction:column;gap:10px}
+.paper p,.paper li{max-width:70ch}
+@media (max-width:620px){
+  .scroll>table:has(thead){min-width:640px}
+  .brow{grid-template-columns:1fr 84px} .brow .blab{grid-column:1/-1}
+  .lhead{display:none} .lrow{grid-template-columns:1fr 50px 58px} .lrow .blab{grid-column:1/-1}
+}
+@media print{ nav.tabs,header.top,.noprint,.banner{display:none!important} body{background:#fff} .paper{border:0;padding:0} section.panel[hidden]{display:none!important} }
+</style>
+
+<div class="wrap" dir="rtl" lang="ar">
+  <header class="top">
+    <div class="brand"><b>مُستبين</b><span class="muted">تحليل الاستبانات · الإحصاء · الامتثال · التقارير</span></div>
+    <div class="actions">
+      <label class="btn primary" for="file">حمّل ملف استبانة</label>
+      <input type="file" id="file" accept=".csv,.tsv,.txt,.xlsx,.xls" hidden>
+      <button id="btnSample">بيانات تجريبية</button>
+    </div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+  <nav class="tabs" role="tablist" id="tabs"></nav>
+  <main id="panels"></main>
+</div>
+<div id="tip" hidden></div><div id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+document.documentElement.dir='rtl';document.documentElement.lang='ar';
+/* ============ helpers ============ */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const f=(x,d=2)=>{ if(x==null||!isFinite(x)) return '—'; const s=Math.abs(x).toFixed(d); return x<0&&+s!==0?'\u200E\u2212'+s:s; };
+const pf=p=>p==null||!isFinite(p)?'—':p<.001?'< .001':p.toFixed(3).replace(/^0/,'');
+const pstr=p=>p<.001?'p < .001':'p = '+pf(p);
+const pc=(x,d=1)=>x==null||!isFinite(x)?'—':(100*x).toFixed(d)+'%';
+const AR_NORM=s=>String(s).replace(/[ً-ْـ]/g,'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ').trim().toLowerCase();
+const latin=s=>s.replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/٫/g,'.');
+function toNum(v){ if(v==null) return null; const s=latin(String(v).trim()); if(!/^-?\d+(\.\d+)?$/.test(s)) return null; return +s; }
+function toast(m){ const t=$('#toast'); t.textContent=m; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,2600); }
+
+/* ============ statistics engine ============ */
+const ST={
+  lg(x){ const c=[76.18009172947146,-86.50532032941677,24.01409824083091,-1.231739572450155,.1208650973866179e-2,-.5395239384953e-5]; let y=x,t=x+5.5; t-=(x+.5)*Math.log(t); let s=1.000000000190015; for(let j=0;j<6;j++) s+=c[j]/++y; return -t+Math.log(2.5066282746310005*s/x); },
+  bcf(a,b,x){ const FP=1e-300; let qab=a+b,qap=a+1,qam=a-1,c=1,d=1-qab*x/qap; if(Math.abs(d)<FP)d=FP; d=1/d; let h=d;
+    for(let m=1;m<=300;m++){ const m2=2*m; let aa=m*(b-m)*x/((qam+m2)*(a+m2)); d=1+aa*d; if(Math.abs(d)<FP)d=FP; c=1+aa/c; if(Math.abs(c)<FP)c=FP; d=1/d; h*=d*c;
+      aa=-(a+m)*(qab+m)*x/((a+m2)*(qap+m2)); d=1+aa*d; if(Math.abs(d)<FP)d=FP; c=1+aa/c; if(Math.abs(c)<FP)c=FP; d=1/d; const del=d*c; h*=del; if(Math.abs(del-1)<3e-14) break; } return h; },
+  ibeta(x,a,b){ if(x<=0)return 0; if(x>=1)return 1; const bt=Math.exp(ST.lg(a+b)-ST.lg(a)-ST.lg(b)+a*Math.log(x)+b*Math.log(1-x)); return x<(a+1)/(a+b+2)?bt*ST.bcf(a,b,x)/a:1-bt*ST.bcf(b,a,1-x)/b; },
+  gammp(a,x){ if(x<=0) return 0; if(x<a+1){ let ap=a,sum=1/a,del=sum; for(let n=0;n<500;n++){ ap++; del*=x/ap; sum+=del; if(Math.abs(del)<Math.abs(sum)*3e-14) break; } return sum*Math.exp(-x+a*Math.log(x)-ST.lg(a)); }
+    const FP=1e-300; let b=x+1-a,c=1/FP,d=1/b,h=d; for(let i=1;i<=500;i++){ const an=-i*(i-a); b+=2; d=an*d+b; if(Math.abs(d)<FP)d=FP; c=b+an/c; if(Math.abs(c)<FP)c=FP; d=1/d; const del=d*c; h*=del; if(Math.abs(del-1)<3e-14) break; } return 1-Math.exp(-x+a*Math.log(x)-ST.lg(a))*h; },
+  pT(t,df){ return ST.ibeta(df/(df+t*t),df/2,.5); },            // two-sided
+  pF(F,d1,d2){ return F<=0?1:ST.ibeta(d2/(d2+d1*F),d2/2,d1/2); },
+  pChi(x,df){ return x<=0?1:1-ST.gammp(df/2,x/2); },
+  tCrit(df){ let lo=0,hi=50; for(let i=0;i<60;i++){ const m=(lo+hi)/2; ST.pT(m,df)>.05?lo=m:hi=m; } return (lo+hi)/2; },
+  mean(a){ let s=0; for(const x of a) s+=x; return a.length?s/a.length:NaN; },
+  vari(a){ if(a.length<2) return NaN; const m=ST.mean(a); let s=0; for(const x of a) s+=(x-m)**2; return s/(a.length-1); },
+  sd(a){ return Math.sqrt(ST.vari(a)); },
+  q(sorted,p){ if(!sorted.length) return NaN; const h=(sorted.length-1)*p,l=Math.floor(h); return sorted[l]+(h-l)*((sorted[l+1]??sorted[l])-sorted[l]); },
+  desc(a){ const s=[...a].sort((x,y)=>x-y),n=a.length,m=ST.mean(a),sd=ST.sd(a); const se=sd/Math.sqrt(n),tc=n>1?ST.tCrit(n-1):NaN;
+    let sk=NaN; if(n>2&&sd>0){ let c=0; for(const x of a) c+=((x-m)/sd)**3; sk=c*n/((n-1)*(n-2)); }
+    return {n,mean:m,sd,median:ST.q(s,.5),q1:ST.q(s,.25),q3:ST.q(s,.75),min:s[0],max:s[n-1],lo:m-tc*se,hi:m+tc*se,skew:sk}; },
+  rank(a){ const idx=a.map((v,i)=>[v,i]).sort((x,y)=>x[0]-y[0]),r=new Array(a.length),ties=[]; let i=0; while(i<idx.length){ let j=i; while(j+1<idx.length&&idx[j+1][0]===idx[i][0]) j++; const rk=(i+j)/2+1; for(let k=i;k<=j;k++) r[idx[k][1]]=rk; if(j>i) ties.push(j-i+1); i=j+1; } return {r,ties}; },
+  pearson(x,y){ const n=x.length,mx=ST.mean(x),my=ST.mean(y); let sxy=0,sxx=0,syy=0; for(let i=0;i<n;i++){ sxy+=(x[i]-mx)*(y[i]-my); sxx+=(x[i]-mx)**2; syy+=(y[i]-my)**2; } const r=sxy/Math.sqrt(sxx*syy); const t=r*Math.sqrt((n-2)/(1-r*r)); return {r,n,p:n>2&&Math.abs(r)<1?ST.pT(t,n-2):(Math.abs(r)>=1?0:NaN)}; },
+  spearman(x,y){ return ST.pearson(ST.rank(x).r,ST.rank(y).r); },
+  welch(a,b){ const n1=a.length,n2=b.length,m1=ST.mean(a),m2=ST.mean(b),v1=ST.vari(a),v2=ST.vari(b); const se=Math.sqrt(v1/n1+v2/n2),t=(m1-m2)/se; const df=(v1/n1+v2/n2)**2/((v1/n1)**2/(n1-1)+(v2/n2)**2/(n2-1)); const sp=Math.sqrt(((n1-1)*v1+(n2-1)*v2)/(n1+n2-2)); return {t,df,p:ST.pT(t,df),d:(m1-m2)/sp}; },
+  anova(gs){ const all=gs.flat(),N=all.length,k=gs.length,gm=ST.mean(all); let ssb=0,ssw=0; for(const g of gs){ const m=ST.mean(g); ssb+=g.length*(m-gm)**2; for(const x of g) ssw+=(x-m)**2; } const F=(ssb/(k-1))/(ssw/(N-k)); return {F,df1:k-1,df2:N-k,p:ST.pF(F,k-1,N-k),eta2:ssb/(ssb+ssw)}; },
+  kw(gs){ const all=gs.flat(),N=all.length,{r,ties}=ST.rank(all); let H=0,o=0; for(const g of gs){ let s=0; for(let i=0;i<g.length;i++) s+=r[o+i]; o+=g.length; H+=s*s/g.length; } H=12/(N*(N+1))*H-3*(N+1); let T=0; for(const t of ties) T+=t**3-t; const C=1-T/(N**3-N); H=C>0?H/C:0; const df=gs.length-1; return {H,df,p:ST.pChi(H,df),eps2:H/(N-1)}; },
+  chi2(tab){ const R=tab.length,C=tab[0].length,rs=tab.map(r=>r.reduce((a,b)=>a+b,0)),cs=tab[0].map((_,j)=>tab.reduce((a,r)=>a+r[j],0)),N=rs.reduce((a,b)=>a+b,0); let x=0,low=0; for(let i=0;i<R;i++) for(let j=0;j<C;j++){ const e=rs[i]*cs[j]/N; if(e<5) low++; x+=(tab[i][j]-e)**2/e; } const df=(R-1)*(C-1); return {x,df,p:ST.pChi(x,df),v:Math.sqrt(x/(N*Math.min(R-1,C-1))),N,lowShare:low/(R*C)}; },
+  alpha(M){ const k=M[0].length; if(k<2||M.length<3) return NaN; let sv=0; for(let j=0;j<k;j++) sv+=ST.vari(M.map(r=>r[j])); const tv=ST.vari(M.map(r=>r.reduce((a,b)=>a+b,0))); return k/(k-1)*(1-sv/tv); },
+  bh(ps){ const m=ps.length,o=ps.map((p,i)=>[p,i]).sort((a,b)=>a[0]-b[0]),adj=new Array(m); let mn=1; for(let i=m-1;i>=0;i--){ mn=Math.min(mn,o[i][0]*m/(i+1)); adj[o[i][1]]=mn; } return adj; }
+};
+const esLabel=(v,cuts)=>{ v=Math.abs(v); return v<cuts[0]?'ضئيل':v<cuts[1]?'صغير':v<cuts[2]?'متوسط':'كبير'; };
+
+/* ============ scale label families ============ */
+const FAM=[
+ {labels:['غير موافق بشدة','غير موافق','محايد','موافق','موافق بشدة'],alt:[['strongly disagree','لا اوافق بشده','غير موافق تماما','اعارض بشده'],['disagree','لا اوافق','اعارض'],['neutral','neither agree nor disagree','لا ادري'],['agree','اوافق'],['strongly agree','اوافق بشده','موافق تماما']]},
+ {labels:['غير راضٍ إطلاقاً','غير راضٍ','محايد','راضٍ','راضٍ جداً'],alt:[['very dissatisfied','غير راض اطلاقا','غير راضي اطلاقا','غير راض جدا','غير راضي جدا','مستاء جدا'],['dissatisfied','غير راض','غير راضي','مستاء'],['neutral'],['satisfied','راض','راضي'],['very satisfied','راض جدا','راضي جدا','راض تماما','راضي تماما']]},
+ {labels:['أبداً','نادراً','أحياناً','غالباً','دائماً'],alt:[['never','مطلقا'],['rarely'],['sometimes'],['often'],['always']]},
+ {labels:['ضعيف','مقبول','جيد','جيد جداً','ممتاز'],alt:[['poor','سيئ','سيء'],['fair'],['good'],['very good'],['excellent']]}
+];
+FAM.forEach(F=>{ F.map={}; F.labels.forEach((l,i)=>{ F.map[AR_NORM(l)]=i+1; F.alt[i].forEach(a=>F.map[AR_NORM(a)]=i+1); }); });
+
+/* ============ personal-data detection ============ */
+const PII_NAME=[[/(e-?mail|بريد|ايميل|إيميل)/i,'بريد إلكتروني'],[/(phone|mobile|جوال|هاتف|موبايل|تلفون)/i,'رقم هاتف'],[/(national id|iqama|هوية|هويه|إقامة|اقامة|سجل مدني|passport|جواز)/i,'رقم هوية'],[/^(الاسم|اسم|name)$|full ?name|first ?name|last ?name|الاسم الكامل|الاسم الأول|الاسم الاول|اسم العائلة|اسم الموظف|اسم المستجيب|اسم المشارك/i,'اسم شخص'],[/(\bip\b|ip address)/i,'عنوان IP']];
+const RX={'بريد إلكتروني':/[\w.+-]+@[\w-]+\.[\w.-]+/g,'رقم هاتف':/(?:\+?966[\s-]?|0)5\d{8}(?!\d)|\+\d{10,14}/g,'رقم هوية':/(?<!\d)[12]\d{9}(?!\d)/g,'عنوان IP':/(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])/g};
+function piiKind(name,vals){ for(const [rx,k] of PII_NAME) if(rx.test(name)) return k; if(!vals.length) return null;
+  for(const k in RX){ let c=0; for(const v of vals){ RX[k].lastIndex=0; const m=RX[k].exec(latin(v)); if(m&&m[0].length>=latin(v).trim().length*.8) c++; } if(c/vals.length>=.5) return k; } return null; }
+function textPII(v){ let c=0; const s=latin(v); for(const k in RX){ RX[k].lastIndex=0; if(RX[k].test(s)) c++; } return c>0; }
+function scrub(v){ let s=latin(v); for(const k in RX) s=s.replace(RX[k],'[محذوف]'); return s; }
+
+/* ============ data model ============ */
+const TYPES={scale:'مقياس ترتيبي (ليكرت)',numeric:'رقمي',nps:'توصية 0–10 (NPS)',categorical:'فئوي',text:'نص مفتوح',pii:'بيانات شخصية',id:'معرّف',ignore:'تجاهل'};
+const S={name:'',sample:false,cols:[],n:0,pop:null,qi:null,rel:null,checks:{},title:''};
+try{ S.checks=JSON.parse(localStorage.getItem('mostabeen.checks')||'{}'); }catch(e){}
+const MISSING=new Set(['','na','n/a','null','-','—','لا يوجد']);
+function makeCol(name,raw){ const c={name,raw:raw.map(v=>{ const s=v==null?'':String(v).trim(); return MISSING.has(s.toLowerCase())&&s!=='لا يوجد'?'':s; }),type:'categorical',num:null,fam:null,pii:null}; autoType(c); return c; }
+function autoType(c){ const vals=c.raw.filter(v=>v!==''),n=vals.length,dist=new Set(vals).size; c.pii=piiKind(c.name,vals);
+  if(c.pii) return setType(c,'pii'); if(!n) return setType(c,'ignore');
+  let best=null,bs=0; for(const F of FAM){ const sh=vals.filter(v=>F.map[AR_NORM(v)]).length/n; if(sh>bs){bs=sh;best=F;} }
+  if(bs>=.9&&dist>=2){ c.fam=best; return setType(c,'scale'); }
+  const nums=vals.map(toNum).filter(x=>x!=null);
+  if(nums.length/n>=.95){ const ints=nums.every(Number.isInteger),mn=Math.min(...nums),mx=Math.max(...nums),nd=new Set(nums).size;
+    if(/^(id|#|م|رقم|رقم الاستجابة|رقم المستجيب|respondent ?id|response ?id)$/i.test(c.name.trim())||(/(^|\s)(id|معرف|معرّف)(\s|$)/i.test(c.name)&&nd===nums.length)) return setType(c,'id');
+    if(ints&&mn>=0&&mx<=10&&(nd>=8||/nps|توصي|recommend/i.test(c.name))) return setType(c,'nps');
+    if(ints&&mn>=1&&mx<=7&&nd<=7) return setType(c,'scale');
+    return setType(c,'numeric'); }
+  const avg=vals.reduce((a,v)=>a+v.length,0)/n;
+  if(dist===n&&n>20&&avg<24&&!/\s/.test(vals[0])) return setType(c,'id');
+  const wc=vals.reduce((a,v)=>a+v.split(/\s+/).length,0)/n;
+  if(dist>Math.max(12,.4*n)||avg>40||(wc>=3&&dist>=8)) return setType(c,'text');
+  setType(c,'categorical'); }
+function setType(c,t){ c.type=t; c.num=null; if(t==='scale'||t==='numeric'||t==='nps'){ c.num=c.raw.map(v=>v===''?null:(c.fam&&c.fam.map[AR_NORM(v)])||toNum(v)); const xs=c.num.filter(x=>x!=null);
+    if(t==='scale'){ const mx=xs.length?Math.max(...xs):5,mn=xs.length?Math.min(...xs):1; c.lo=c.fam?1:Math.min(1,mn); c.hi=c.fam?5:(mx<=5?5:mx<=7?7:mx); } } }
+const vals=c=>c.num?c.num.filter(x=>x!=null):c.raw.filter(v=>v!=='');
+const byType=(...t)=>S.cols.filter(c=>t.includes(c.type));
+function loadTable(rows,name,sample){ rows=rows.filter(r=>r&&r.some(v=>v!=null&&String(v).trim()!=='')); if(rows.length<3){ toast('الملف لا يحتوي صفوفاً كافية: نحتاج صف عناوين وصفّي بيانات على الأقل'); return; }
+  const seen={},head=rows[0].map((h,i)=>{ let s=String(h??'').trim()||('عمود '+(i+1)); if(seen[s]) s+=' ('+(++seen[s])+')'; else seen[s]=1; return s; });
+  const body=rows.slice(1); S.cols=head.map((h,j)=>makeCol(h,body.map(r=>r[j]))); S.n=body.length; S.name=name; S.sample=!!sample; S.qi=null; S.rel=null; S.pop=null; S.title=sample?'استبانة الارتباط الوظيفي (مثال)':name.replace(/\.[^.]+$/,'');
+  analyze(); }
+function parseCSV(text){ text=text.replace(/^﻿/,''); const first=text.split(/\r?\n/,1)[0]; const delim=['\t',';',','].map(d=>[d,first.split(d).length]).sort((a,b)=>b[1]-a[1])[0][0];
+  const rows=[]; let row=[],cur='',q=false; for(let i=0;i<text.length;i++){ const ch=text[i]; if(q){ if(ch==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; } else if(ch==='"') q=true; else if(ch===delim){ row.push(cur); cur=''; } else if(ch==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; } else if(ch!=='\r') cur+=ch; }
+  if(cur!==''||row.length){ row.push(cur); rows.push(row); } return rows; }
+function readFile(file){ const r=new FileReader(); const xl=/\.xlsx?$/i.test(file.name);
+  r.onerror=()=>toast('تعذّرت قراءة الملف');
+  r.onload=()=>{ try{ if(xl){ if(!window.XLSX){ toast('مكتبة Excel لم تُحمَّل. احفظ الملف بصيغة CSV وأعد المحاولة'); return; } const wb=XLSX.read(r.result,{type:'array'}); loadTable(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:false}),file.name); } else loadTable(parseCSV(r.result),file.name); }catch(e){ console.error(e); toast('صيغة الملف غير مفهومة. جرّب CSV بترميز UTF-8'); } };
+  xl?r.readAsArrayBuffer(file):r.readAsText(file); }
+
+/* ============ sample data (synthetic, clearly labelled) ============ */
+function sampleData(){ let seed=20261121; const rnd=()=>{ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };
+  const nrm=()=>Math.sqrt(-2*Math.log(rnd()+1e-12))*Math.cos(2*Math.PI*rnd()), pick=(a,w)=>{ let r=rnd()*w.reduce((x,y)=>x+y,0); for(let i=0;i<a.length;i++){ r-=w[i]; if(r<=0) return a[i]; } return a[a.length-1]; };
+  const L=FAM[0].labels, depts=['الموارد البشرية','تقنية المعلومات','المالية','العمليات','خدمة العملاء'], eff=[.15,.3,.05,-.1,-.5];
+  const items=['أشعر بالتقدير في عملي','أحصل على الأدوات اللازمة لأداء مهامي','يتعاون زملائي معي بفاعلية','بيئة العمل تشجع على طرح الأفكار','يوضح مديري المباشر الأولويات','أتلقى تغذية راجعة مفيدة بانتظام','أثق بقرارات الإدارة العليا','أرى فرصاً واضحة للتطور المهني'], shift=[.2,.35,.5,0,.25,-.2,-.1,-.45];
+  const notes=['أقترح زيادة فرص التدريب','ضغط العمل مرتفع في نهاية كل شهر','التواصل بين الإدارات يحتاج إلى تحسين','بيئة العمل ممتازة والزملاء متعاونون','نحتاج إلى أدوات تقنية أحدث','المسار الوظيفي غير واضح','أشكر الإدارة على مرونة ساعات العمل','التغذية الراجعة من المدير قليلة','الرواتب لا تواكب ضغط العمل','أتمنى وضوح الأولويات أكثر'];
+  const head=['رقم الاستجابة','البريد الإلكتروني','الجنس','الفئة العمرية','الإدارة','سنوات الخبرة',...items,'ما مدى احتمال أن توصي بالعمل لدينا؟ (0–10)','مدة الإجابة (ثانية)','ملاحظات'], rows=[head];
+  for(let i=1;i<=240;i++){ const d=Math.floor(rnd()*5),z=nrm(),speed=rnd()<.035; const ans=items.map((_,j)=>{ if(rnd()<.03) return ''; const v=Math.max(1,Math.min(5,Math.round(3.35+.85*z+eff[d]+shift[j]+.75*nrm()))); return L[(speed?4:v)-1]; });
+    rows.push([i,'user'+String(i).padStart(3,'0')+'@example.com',pick(['ذكر','أنثى'],[55,45]),pick(['أقل من 25','25–34','35–44','45 فأكثر'],[1.2,45,35,19]),depts[d],Math.max(1,Math.round(8+6*nrm())),...ans,rnd()<.04?'':Math.max(0,Math.min(10,Math.round(7.5+1.9*z+1.6*eff[d]+1.4*nrm()))),speed?Math.round(35+rnd()*25):Math.round(Math.exp(5.7+.35*nrm())),rnd()<.42?(i===57?'يمكن التواصل معي على 0551234567 لشرح المشكلة':notes[Math.floor(rnd()*notes.length)]):'']); }
+  [12,88].forEach(k=>{ const c=[...rows[k]]; c[0]=rows.length; c[1]='user'+rows.length+'@example.com'; rows.push(c); });
+  loadTable(rows,'بيانات تجريبية',true); }
+
+/* ============ analysis ============ */
+let A={};
+function analyze(){
+  const scales=byType('scale'), outs=byType('scale','numeric','nps'), cats=byType('categorical'), texts=byType('text'), use=S.cols.filter(c=>!['id','pii','ignore'].includes(c.type));
+  A={scales,outs,cats,texts,use};
+  /* quality */
+  const closed=use.filter(c=>c.type!=='text'); let cells=0,miss=0,full=0; const rowMiss=new Array(S.n).fill(0);
+  closed.forEach(c=>c.raw.forEach((v,i)=>{ cells++; if(v===''){ miss++; rowMiss[i]++; } })); full=rowMiss.filter(x=>x===0).length;
+  const dur=S.cols.find(c=>c.type==='numeric'&&/(مدة|مده|زمن|duration|time taken|seconds)/i.test(c.name));
+  const key=i=>use.filter(c=>c!==dur).map(c=>c.raw[i]).join('\u0001'), seen=new Map(); let dup=0; for(let i=0;i<S.n;i++){ const k=key(i); if(seen.has(k)) dup++; else seen.set(k,i); }
+  let straight=0; if(scales.length>=5) for(let i=0;i<S.n;i++){ const xs=scales.map(c=>c.num[i]).filter(x=>x!=null); if(xs.length>=5&&xs.every(x=>x===xs[0])) straight++; }
+  let speed=null; if(dur){ const xs=vals(dur),med=ST.q([...xs].sort((a,b)=>a-b),.5); speed={col:dur.name,med,cut:med/3,n:xs.filter(x=>x<med/3).length}; }
+  A.q={cells,miss,missRate:cells?miss/cells:0,full,dup,straight,speed,dur};
+  /* reliability */
+  if(!S.rel) S.rel=new Set(scales.filter(c=>c.hi===(scales[0]||{}).hi).map(c=>c.name));
+  A.rel=reliability(scales.filter(c=>S.rel.has(c.name)));
+  /* nps */
+  const np=byType('nps')[0]; A.nps=np?nps(np):null;
+  /* automatic scan with FDR */
+  const res=[], g=cats.filter(c=>{ const k=new Set(c.raw.filter(v=>v!=='')).size; return k>=2&&k<=8; });
+  for(const a of g){ for(const b of outs){ if(b===dur) continue; const t=testPair(a,b,5); if(t&&isFinite(t.p)) res.push({a:a.name,b:b.name,...t}); } }
+  for(let i=0;i<g.length;i++) for(let j=i+1;j<g.length;j++){ const t=testPair(g[i],g[j],5); if(t&&isFinite(t.p)) res.push({a:g[i].name,b:g[j].name,...t}); }
+  const adj=ST.bh(res.map(r=>r.p)); res.forEach((r,i)=>r.padj=adj[i]); res.sort((x,y)=>x.padj-y.padj||x.p-y.p); A.scan=res;
+  /* compliance */
+  if(!S.qi) S.qi=new Set(cats.slice(0,3).map(c=>c.name));
+  A.comp=compliance();
+  render(); }
+function nps(c){ const xs=vals(c),n=xs.length,p=xs.filter(x=>x>=9).length/n,d=xs.filter(x=>x<=6).length/n,se=Math.sqrt((p+d-(p-d)**2)/n); return {name:c.name,n,p,d,pa:1-p-d,score:100*(p-d),lo:100*(p-d-1.96*se),hi:100*(p-d+1.96*se)}; }
+function reliability(items){ if(items.length<2) return null; const M=[]; for(let i=0;i<S.n;i++){ const r=items.map(c=>c.num[i]); if(r.every(x=>x!=null)) M.push(r); } if(M.length<3) return null;
+  const a=ST.alpha(M),tot=M.map(r=>r.reduce((x,y)=>x+y,0)); const rows=items.map((c,j)=>{ const col=M.map(r=>r[j]),rest=tot.map((t,i)=>t-col[i]); return {name:c.name,mean:ST.mean(col),sd:ST.sd(col),rit:ST.pearson(col,rest).r,del:items.length>2?ST.alpha(M.map(r=>r.filter((_,k)=>k!==j))):NaN}; });
+  return {alpha:a,n:M.length,k:items.length,rows}; }
+const alphaLabel=a=>a>=.9?'ممتاز':a>=.8?'جيد':a>=.7?'مقبول':a>=.6?'مشكوك فيه':'ضعيف';
+function groups(a,b,minN){ const m=new Map(); for(let i=0;i<S.n;i++){ const g=a.raw[i],v=b.num[i]; if(g===''||v==null) continue; if(!m.has(g)) m.set(g,[]); m.get(g).push(v); } return [...m].filter(([,x])=>x.length>=minN); }
+function testPair(a,b,minN=2){
+  const isN=c=>!!c.num, isC=c=>c.type==='categorical'; if(isN(a)&&isC(b)) [a,b]=[b,a];
+  if(isC(a)&&isC(b)){ const ra=[...new Set(a.raw.filter(v=>v!==''))],rb=[...new Set(b.raw.filter(v=>v!==''))]; let tab=ra.map(()=>rb.map(()=>0)); for(let i=0;i<S.n;i++){ const x=ra.indexOf(a.raw[i]),y=rb.indexOf(b.raw[i]); if(x>=0&&y>=0) tab[x][y]++; }
+    const keepR=ra.map((_,i)=>tab[i].reduce((s,v)=>s+v,0)>=minN), keepC=rb.map((_,j)=>tab.reduce((s,r)=>s+r[j],0)>=minN); const R=ra.filter((_,i)=>keepR[i]),C=rb.filter((_,j)=>keepC[j]); tab=tab.filter((_,i)=>keepR[i]).map(r=>r.filter((_,j)=>keepC[j])); if(R.length<2||C.length<2) return null;
+    const r=ST.chi2(tab); return {test:'مربع كاي للاستقلال',line:`χ²(${r.df}) = ${f(r.x)}, ${pstr(r.p)}, V = ${f(r.v)}`,p:r.p,es:r.v,esName:"V كرامر",esL:esLabel(r.v,[.1,.3,.5]),n:r.N,warn:r.lowShare>.2?`${pc(r.lowShare,0)} من الخلايا تكرارها المتوقع أقل من 5، فالنتيجة تقريبية. ادمج الفئات الصغيرة.`:'',detail:{kind:'xtab',R,C,tab}}; }
+  if(isC(a)&&isN(b)){ const gs=groups(a,b,minN); if(gs.length<2) return null; const arr=gs.map(g=>g[1]),N=arr.flat().length,ord=b.type!=='numeric'; let o;
+    if(ord){ const r=ST.kw(arr); o={test:gs.length===2?'مان–ويتني (عبر كروسكال–واليس)':'كروسكال–واليس',line:`H(${r.df}) = ${f(r.H)}, ${pstr(r.p)}, ε² = ${f(r.eps2,3)}`,p:r.p,es:r.eps2,esName:'ε²',esL:esLabel(r.eps2,[.01,.06,.14]),warn:''}; }
+    else if(gs.length===2){ const r=ST.welch(arr[0],arr[1]); o={test:'اختبار ت لويلش',line:`t(${f(r.df,1)}) = ${f(r.t)}, ${pstr(r.p)}, d = ${f(r.d)}`,p:r.p,es:r.d,esName:'d كوهين',esL:esLabel(r.d,[.2,.5,.8]),warn:''}; }
+    else{ const r=ST.anova(arr); o={test:'تحليل التباين الأحادي',line:`F(${r.df1}, ${r.df2}) = ${f(r.F)}, ${pstr(r.p)}, η² = ${f(r.eta2,3)}`,p:r.p,es:r.eta2,esName:'η²',esL:esLabel(r.eta2,[.01,.06,.14]),warn:'يفترض تجانس التباين بين المجموعات. تحقق منه قبل الاعتماد على النتيجة.'}; }
+    return {...o,n:N,detail:{kind:'groups',rows:gs.map(([g,x])=>({g,n:x.length,mean:ST.mean(x),sd:ST.sd(x),median:ST.q([...x].sort((p,q)=>p-q),.5)}))}}; }
+  if(isN(a)&&isN(b)){ const x=[],y=[]; for(let i=0;i<S.n;i++) if(a.num[i]!=null&&b.num[i]!=null){ x.push(a.num[i]); y.push(b.num[i]); } if(x.length<4) return null; const sp=ST.spearman(x,y),pe=ST.pearson(x,y),ord=a.type!=='numeric'||b.type!=='numeric',r=ord?sp:pe;
+    return {test:ord?'ارتباط سبيرمان':'ارتباط بيرسون',line:ord?`ρ = ${f(sp.r)}, ${pstr(sp.p)}, n = ${x.length}`:`r = ${f(pe.r)}, ${pstr(pe.p)}, n = ${x.length} · ρ = ${f(sp.r)}`,p:r.p,es:r.r,esName:ord?'ρ':'r',esL:esLabel(r.r,[.1,.3,.5]),n:x.length,warn:'',detail:null}; }
+  return null; }
+function compliance(){ const pii=byType('pii').map(c=>({name:c.name,kind:c.pii||'محدَّد يدوياً',n:c.raw.filter(v=>v!=='').length}));
+  const tp=A.texts.map(c=>({name:c.name,n:c.raw.filter(v=>v!==''&&textPII(v)).length})).filter(x=>x.n);
+  const qi=A.cats.filter(c=>S.qi.has(c.name)); let kan=null; if(qi.length){ const m=new Map(); for(let i=0;i<S.n;i++){ const k=qi.map(c=>c.raw[i]).join('\u0001'); m.set(k,(m.get(k)||0)+1); } const sizes=[...m.values()]; kan={classes:sizes.length,min:Math.min(...sizes),risk:sizes.filter(s=>s<5).reduce((a,b)=>a+b,0),uniq:sizes.filter(s=>s===1).length}; }
+  const small=[]; A.cats.forEach(c=>{ const m=new Map(); c.raw.forEach(v=>{ if(v!=='') m.set(v,(m.get(v)||0)+1); }); m.forEach((n,v)=>{ if(n<5) small.push({col:c.name,v,n}); }); });
+  const q=A.q, a=A.rel?A.rel.alpha:null, auto=[
+    {t:'حجم العينة',s:S.n>=100?'ok':S.n>=30?'warn':'bad',d:`${S.n} استجابة. هامش الخطأ التقريبي ±${f(100*moe(S.n,S.pop),1)}% عند ثقة 95%.`},
+    {t:'القيم المفقودة',s:q.missRate<.05?'ok':q.missRate<.15?'warn':'bad',d:`${pc(q.missRate)} من خلايا الأسئلة المغلقة فارغة.`},
+    {t:'الاستجابات المكررة',s:q.dup?'warn':'ok',d:q.dup?`${q.dup} صفوف تطابق صفوفاً أخرى في كل الإجابات.`:'لا توجد صفوف متطابقة.'},
+    {t:'الإجابة النمطية (نفس الخيار لكل البنود)',s:A.scales.length<5?'na':q.straight/S.n<.05?'ok':'warn',d:A.scales.length<5?'يتطلب 5 بنود مقياس على الأقل.':`${q.straight} استجابة (${pc(q.straight/S.n)}).`},
+    {t:'ثبات المقياس',s:a==null?'na':a>=.7?'ok':a>=.6?'warn':'bad',d:a==null?'لا توجد بنود مقياس كافية.':`ألفا كرونباخ = ${f(a,3)} (${alphaLabel(a)}).`},
+    {t:'أعمدة بيانات شخصية مباشرة',s:pii.length?'bad':'ok',d:pii.length?`${pii.length} عمود: ${pii.map(p=>p.name).join('، ')}. استُبعدت من التحليل، ويجب حذفها قبل مشاركة الملف.`:'لم يُرصد أي عمود.'},
+    {t:'بيانات شخصية داخل النصوص المفتوحة',s:tp.length?'warn':'ok',d:tp.length?tp.map(x=>`«${x.name}»: ${x.n} إجابة`).join('، ')+' تحتوي بريداً أو رقماً.':'لم يُرصد شيء بالأنماط المعروفة.'},
+    {t:'إمكانية إعادة التعرّف (k = 5)',s:!kan?'na':kan.risk===0?'ok':kan.risk/S.n>.1?'bad':'warn',d:!kan?'اختر المعرّفات شبه المباشرة.':`أصغر مجموعة = ${kan.min}. ${kan.risk} سجل (${pc(kan.risk/S.n)}) في مجموعات أقل من 5، منها ${kan.uniq} فريد.`},
+    {t:'الخلايا الصغيرة في الجداول',s:small.length?'warn':'ok',d:small.length?`${small.length} فئة عددها أقل من 5. ادمجها أو احجبها عند النشر.`:'كل الفئات 5 فأكثر.'}];
+  const app=auto.filter(x=>x.s!=='na'),man=MANUAL.filter(m=>S.checks[m.id]).length;
+  return {pii,tp,kan,small,auto,pass:app.filter(x=>x.s==='ok').length+man,total:app.length+MANUAL.length}; }
+const moe=(n,N)=>{ let m=1.96*Math.sqrt(.25/n); if(N&&N>n) m*=Math.sqrt((N-n)/(N-1)); return m; };
+const MANUAL=[
+ {id:'consent',t:'وُثّقت موافقة المشاركين قبل جمع البيانات',r:'GDPR م.6 و7 · نظام حماية البيانات الشخصية: الموافقة'},
+ {id:'notice',t:'أُبلغ المشاركون بغرض الجمع ومن سيطّلع على البيانات',r:'GDPR م.13 · نظام حماية البيانات الشخصية: الإشعار'},
+ {id:'minim',t:'اقتصر الجمع على ما يلزم للغرض المعلن',r:'GDPR م.5(1)(ج) · مبدأ الحد الأدنى من البيانات'},
+ {id:'retain',t:'حُدّدت مدة الاحتفاظ وموعد الإتلاف',r:'GDPR م.5(1)(هـ) · نظام حماية البيانات الشخصية: الإتلاف'},
+ {id:'rights',t:'توجد آلية لسحب الموافقة أو طلب الحذف',r:'GDPR م.7(3) و17 · حقوق صاحب البيانات'},
+ {id:'access',t:'حُصر الوصول إلى البيانات الخام بالمخوّلين',r:'GDPR م.32 · أمن المعالجة'},
+ {id:'dpia',t:'قُيّمت الحاجة إلى تقييم أثر عند وجود بيانات حساسة',r:'GDPR م.35'},
+ {id:'transfer',t:'رُوجعت ضوابط نقل البيانات خارج الدولة',r:'GDPR الفصل الخامس · نظام حماية البيانات الشخصية: النقل خارج المملكة'},
+ {id:'prob',t:'العينة احتمالية وإطار المعاينة موثّق',r:'ISO 20252 · مبادرة الشفافية AAPOR'},
+ {id:'disclose',t:'سيُنشر نص الأسئلة وتواريخ الجمع وطريقته مع النتائج',r:'مبادرة الشفافية AAPOR · ISO 20252'}];
+
+/* ============ chart builders ============ */
+function barList(pairs,total){ const mx=Math.max(...pairs.map(p=>p[1]),1); return `<div class="bars">${pairs.map(([k,n])=>`<div class="brow" data-tip="${esc(k)}: ${n} (${pc(n/total)})"><div class="blab">${esc(k)}</div><div class="btrack"><div class="bfill" style="width:${100*n/mx}%"></div></div><div class="bval">${pc(n/total)} · ${n}</div></div>`).join('')}</div>`; }
+function segStyle(i,k){ const h=Math.floor(k/2),N=['--neg3','--neg2','--neg1'],P=['--pos1','--pos2','--pos3'],cls=['w','',''],pick=h<=1?[1]:h===2?[0,2]:[0,1,2];
+  if(k%2&&i===h) return ['var(--mid)','m']; if(i<h){ const x=pick[Math.min(i,pick.length-1)]; return [`var(${N[x]})`,cls[x]]; } const j=k-1-i,x=pick[Math.min(j,pick.length-1)]; return [`var(${P[2-x]})`,cls[x]]; }
+function scaleLabels(c){ const k=c.hi-c.lo+1; return Array.from({length:k},(_,i)=>c.fam?c.fam.labels[i]:String(c.lo+i)); }
+function likert(items){ if(!items.length) return '<p class="muted">لا توجد بنود مقياس.</p>';
+  const rows=items.map(c=>{ const xs=vals(c),k=c.hi-c.lo+1,cnt=new Array(k).fill(0); xs.forEach(x=>{ const i=Math.round(x)-c.lo; if(i>=0&&i<k) cnt[i]++; }); return {c,xs,cnt,k,mean:ST.mean(xs),top:xs.filter(x=>x>=c.hi-1).length/xs.length}; }).sort((a,b)=>b.mean-a.mean);
+  const ref=rows[0].c,labs=scaleLabels(ref);
+  return `<div class="legend">${labs.map((l,i)=>`<span><i style="background:${segStyle(i,labs.length)[0]}"></i>${esc(l)}</span>`).join('')}</div>
+  <div class="bars"><div class="lhead"><span>البند (مرتّبة بالمتوسط)</span><span></span><span>المتوسط</span><span>أعلى خيارين</span></div>${rows.map(r=>{ const L=scaleLabels(r.c); return `<div class="lrow"><div class="blab">${esc(r.c.name)}</div><div class="lstack">${r.cnt.map((n,i)=>{ if(!n) return ''; const [bg,cl]=segStyle(i,r.k),p=n/r.xs.length; return `<div class="seg ${cl}" style="flex:${n} 0 0;background:${bg}" data-tip="${esc(L[i])}: ${n} (${pc(p)})">${p>=.09?Math.round(100*p):''}</div>`; }).join('')}</div><div class="lnum">${f(r.mean)}</div><div class="lnum">${pc(r.top,0)}</div></div>`; }).join('')}</div>`; }
+function npsBlock(n){ return `<div class="lstack" style="height:26px">${[['المنتقدون (0–6)',n.d,'var(--neg3)','w'],['المحايدون (7–8)',n.pa,'var(--mid)','m'],['المروّجون (9–10)',n.p,'var(--pos3)','w']].map(([l,p,bg,cl])=>p>0?`<div class="seg ${cl}" style="flex:${p} 0 0;background:${bg}" data-tip="${l}: ${pc(p)}">${Math.round(100*p)}%</div>`:'').join('')}</div>
+  <div class="legend"><span><i style="background:var(--neg3)"></i>المنتقدون (0–6)</span><span><i style="background:var(--mid)"></i>المحايدون (7–8)</span><span><i style="background:var(--pos3)"></i>المروّجون (9–10)</span></div>
+  <p>صافي نقاط الترويج <span class="stat">NPS = ${f(n.score,0)}, 95% CI [${f(n.lo,0)}, ${f(n.hi,0)}], n = ${n.n}</span></p>`; }
+function hist(xs){ const mn=Math.min(...xs),mx=Math.max(...xs),k=Math.min(12,Math.max(4,Math.ceil(Math.sqrt(xs.length)))),w=(mx-mn)/k||1,b=new Array(k).fill(0); xs.forEach(x=>b[Math.min(k-1,Math.floor((x-mn)/w))]++); const top=Math.max(...b);
+  return `<div class="hist">${b.map((n,i)=>`<div style="height:${100*n/top}%" data-tip="${f(mn+i*w,1)} – ${f(mn+(i+1)*w,1)}: ${n}"></div>`).join('')}</div><div class="haxis"><span>${f(mn,1)}</span><span>${f(mx,1)}</span></div>`; }
+const STOP=new Set('في من على الى إلى عن مع هذا هذه ذلك التي الذي ما لا لم لن ان أن إن او أو ثم قد كل كان كانت هو هي هم نحن انا أنا بعد قبل عند حتى اذا إذا بين غير اكثر أكثر جدا جداً و يا the a an and or of to in is are for on with it this that be as at by'.split(' ').map(AR_NORM));
+function words(c){ const m=new Map(); c.raw.forEach(v=>{ if(v==='') return; new Set(AR_NORM(scrub(v)).replace(/[^\p{L}\s]/gu,' ').split(' ').map(w=>w.replace(/^(وال|بال|كال|فال|لل|ال)(?=.{3,})/,''))).forEach(w=>{ if(w.length>2&&!STOP.has(w)) m.set(w,(m.get(w)||0)+1); }); }); return [...m].sort((a,b)=>b[1]-a[1]).slice(0,12); }
+const pill=s=>`<span class="pill ${s==='ok'?'ok':s==='warn'?'warn':s==='bad'?'bad':''}">${s==='ok'?'مستوفى':s==='warn'?'يحتاج مراجعة':s==='bad'?'غير مستوفى':'لا ينطبق'}</span>`;
+
+/* ============ panels ============ */
+const TABS=[['sum','الملخص'],['data','البيانات'],['qual','الجودة'],['res','النتائج'],['rel','العلاقات'],['reli','الثبات'],['comp','الامتثال'],['rep','التقرير']];
+let cur='sum';
+function findings(){ const out=[],sc=A.scales; out.push(`حُلّلت <b class="num">${S.n}</b> استجابة على <b class="num">${A.use.length}</b> متغيراً. اكتمل <span class="num">${pc(A.q.full/S.n,0)}</span> من الاستجابات دون أي سؤال مغلق فارغ.`);
+  if(sc.length>1){ const r=sc.map(c=>({n:c.name,m:ST.mean(vals(c)),hi:c.hi})).sort((a,b)=>b.m-a.m); out.push(`أعلى البنود تقييماً «${esc(r[0].n)}» بمتوسط <span class="num">${f(r[0].m)}</span> من ${r[0].hi}، وأدناها «${esc(r[r.length-1].n)}» بمتوسط <span class="num">${f(r[r.length-1].m)}</span>.`); }
+  if(A.nps) out.push(`صافي نقاط الترويج <span class="num">${f(A.nps.score,0)}</span> (فترة الثقة 95%: <span class="num">${f(A.nps.lo,0)}</span> إلى <span class="num">${f(A.nps.hi,0)}</span>).`);
+  if(A.rel) out.push(`ثبات المقياس ${alphaLabel(A.rel.alpha)}: ألفا كرونباخ <span class="num">${f(A.rel.alpha,3)}</span> على ${A.rel.k} بنود.`);
+  const sig=A.scan.filter(r=>r.padj<.05); if(A.scan.length) out.push(sig.length?`من ${A.scan.length} مقارنة، بقيت <b class="num">${sig.length}</b> دالة بعد تصحيح المقارنات المتعددة. أقواها: «${esc(sig[0].b)}» بحسب «${esc(sig[0].a)}» (حجم أثر ${sig[0].esL}).`:`لم تبقَ أي من ${A.scan.length} مقارنة دالة بعد تصحيح المقارنات المتعددة.`);
+  const bad=A.comp.auto.filter(x=>x.s==='bad').length; out.push(`جاهزية الامتثال ${A.comp.pass} من ${A.comp.total}${bad?`، ومنها ${bad} بند غير مستوفى يمنع المشاركة الآمنة`:''}.`); return out; }
+function scanTable(rows){ return rows.length?`<div class="scroll"><table><thead><tr><th>المتغير</th><th>بحسب</th><th>الاختبار</th><th class="n">p</th><th class="n">p المعدّلة</th><th>حجم الأثر</th><th>الحكم</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.b)}</td><td>${esc(r.a)}</td><td>${r.test}</td><td class="n">${pf(r.p)}</td><td class="n">${pf(r.padj)}</td><td><span class="num">${r.esName} = ${f(r.es,r.esName==='d كوهين'?2:3)}</span> · ${r.esL}</td><td>${r.padj<.05?'<span class="pill ok">دال</span>':'<span class="pill">غير دال</span>'}</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">لا توجد مقارنات ممكنة. نحتاج متغيراً فئوياً بفئتين إلى ثماني، ومتغيراً رقمياً أو مقياساً.</p>'; }
+const P={
+ sum(){ const a=A.rel,n=A.nps; return `
+  <div class="tiles">
+   <div class="tile"><span class="k">الاستجابات</span><span class="v">${S.n}</span><span class="s">هامش خطأ ±${f(100*moe(S.n,S.pop),1)}%</span></div>
+   <div class="tile"><span class="k">استجابات مكتملة</span><span class="v">${pc(A.q.full/S.n,0)}</span><span class="s">${A.q.full} من ${S.n}</span></div>
+   ${a?`<div class="tile"><span class="k">ألفا كرونباخ</span><span class="v">${f(a.alpha,2)}</span><span class="s">${alphaLabel(a.alpha)} · ${a.k} بنود</span></div>`:''}
+   ${n?`<div class="tile"><span class="k">صافي نقاط الترويج</span><span class="v">${f(n.score,0)}</span><span class="s">95%: ${f(n.lo,0)} إلى ${f(n.hi,0)}</span></div>`:''}
+   <div class="tile"><span class="k">جاهزية الامتثال</span><span class="v" style="font-family:var(--body);direction:rtl">${A.comp.pass} من ${A.comp.total}</span><span class="s">${A.comp.auto.filter(x=>x.s==='bad').length} بند حرج</span></div>
+  </div>
+  <div class="sheet"><h2>ما تقوله البيانات</h2><ul class="clean">${findings().map(x=>`<li>${x}</li>`).join('')}</ul></div>
+  ${A.scales.length?`<div class="sheet"><header><h2>بنود المقياس</h2><span class="muted small">نسبة كل خيار من المجيبين عن البند</span></header>${likert(A.scales)}</div>`:''}
+  ${A.scan.length?`<div class="sheet"><header><h2>أقوى الفروق</h2><span class="muted small">مصحّحة بطريقة بنجاميني–هوكبرغ</span></header>${scanTable(A.scan.slice(0,5))}</div>`:''}`; },
+ data(){ return `
+  <div class="sheet"><h2>مصدر البيانات</h2>
+   <div class="drop" id="drop"><p>اسحب ملف CSV أو Excel إلى هنا، أو الصق الجدول أدناه. الصف الأول عناوين الأسئلة وكل صف بعده مستجيب واحد.</p>
+    <textarea id="paste" rows="3" placeholder="الصق هنا بيانات منسوخة من Excel أو Google Sheets" style="width:100%"></textarea>
+    <div class="row"><button id="btnPaste">حلّل النص الملصوق</button><span class="muted small">يُحلَّل الملف داخل متصفحك ولا يُرفع إلى أي خادم.</span></div></div></div>
+  <div class="sheet"><header><h2>المتغيرات</h2><span class="muted small">${S.cols.length} عمود · ${S.n} صف · ${esc(S.name)}</span></header>
+   <p class="muted small">راجع النوع المكتشف آلياً. المتغير الفئوي المرمّز بأرقام (مثل 1 = ذكر) يُكتشف مقياساً، فغيّره يدوياً.</p>
+   <div class="scroll"><table><thead><tr><th>العمود</th><th>النوع</th><th class="n">مُجاب</th><th class="n">مفقود</th><th class="n">قيم مختلفة</th><th>عيّنة</th></tr></thead><tbody>
+   ${S.cols.map((c,i)=>{ const v=c.raw.filter(x=>x!==''); return `<tr><td>${esc(c.name)}</td><td><select id="type-${i}" data-col="${i}" aria-label="نوع ${esc(c.name)}">${Object.entries(TYPES).map(([k,l])=>`<option value="${k}"${c.type===k?' selected':''}>${l}</option>`).join('')}</select></td><td class="n">${v.length}</td><td class="n">${S.n-v.length}</td><td class="n">${new Set(v).size}</td><td class="muted small">${c.type==='pii'?'محجوب ('+esc(c.pii||'شخصي')+')':esc([...new Set(v)].slice(0,3).join(' · ').slice(0,60))}</td></tr>`; }).join('')}</tbody></table></div></div>`; },
+ qual(){ const q=A.q,cl=A.use.filter(c=>c.type!=='text').map(c=>[c.name,c.raw.filter(v=>v==='').length]).filter(x=>x[1]).sort((a,b)=>b[1]-a[1]).slice(0,12); return `
+  <div class="tiles">
+   <div class="tile"><span class="k">خلايا مفقودة</span><span class="v">${pc(q.missRate)}</span><span class="s">${q.miss} من ${q.cells}</span></div>
+   <div class="tile"><span class="k">صفوف مكررة</span><span class="v">${q.dup}</span><span class="s">تطابق كامل في الإجابات</span></div>
+   <div class="tile"><span class="k">إجابة نمطية</span><span class="v">${A.scales.length>=5?q.straight:'—'}</span><span class="s">نفس الخيار لكل البنود</span></div>
+   ${q.speed?`<div class="tile"><span class="k">إجابات متعجّلة</span><span class="v">${q.speed.n}</span><span class="s">أقل من ثلث الوسيط (${f(q.speed.cut,0)})</span></div>`:''}
+  </div>
+  <div class="sheet"><h2>المفقود بحسب السؤال</h2>${cl.length?barList(cl,S.n):'<p class="muted">لا توجد قيم مفقودة في الأسئلة المغلقة.</p>'}</div>
+  <div class="sheet"><h2>هامش الخطأ</h2>
+   <div class="row"><label for="pop">حجم المجتمع (اختياري)</label><input type="number" id="pop" min="1" value="${S.pop||''}" placeholder="مثال: 1200" style="width:140px"></div>
+   <p>عند <span class="num">n = ${S.n}</span>${S.pop?` ومجتمع <span class="num">N = ${S.pop}</span>`:''}: <span class="stat">±${f(100*moe(S.n,S.pop),2)}%</span> بثقة 95% لنسبة 50%.</p>
+   <p class="muted small">يصحّ هذا الهامش لعينة عشوائية بسيطة فقط. في العينات المتاحة أو التطوعية هو رقم استرشادي ولا يقيس التحيّز.</p></div>`; },
+ res(){ const blocks=[]; if(A.scales.length) blocks.push(`<div class="sheet"><h2>بنود المقياس</h2>${likert(A.scales)}</div>`); if(A.nps) blocks.push(`<div class="sheet"><h2>${esc(A.nps.name)}</h2>${npsBlock(A.nps)}</div>`);
+  const cats=A.cats.map(c=>{ const m=new Map(); c.raw.forEach(v=>{ if(v!=='') m.set(v,(m.get(v)||0)+1); }); const p=[...m].sort((a,b)=>b[1]-a[1]),t=p.reduce((a,b)=>a+b[1],0); return `<div class="sheet"><header><h3>${esc(c.name)}</h3><span class="muted small num">n = ${t}</span></header>${barList(p.slice(0,15),t)}</div>`; });
+  const nums=byType('numeric').map(c=>{ const xs=vals(c); if(xs.length<2) return ''; const d=ST.desc(xs); return `<div class="sheet"><header><h3>${esc(c.name)}</h3><span class="muted small num">n = ${d.n}</span></header>${hist(xs)}<p><span class="stat">M = ${f(d.mean)}, SD = ${f(d.sd)}, Mdn = ${f(d.median)}, IQR = ${f(d.q1)}–${f(d.q3)}</span></p><p class="small muted">فترة الثقة 95% للمتوسط: <span class="num">${f(d.lo)} – ${f(d.hi)}</span> · الالتواء <span class="num">${f(d.skew)}</span></p></div>`; });
+  const txt=A.texts.map(c=>{ const w=words(c),n=c.raw.filter(v=>v!=='').length; return `<div class="sheet"><header><h3>${esc(c.name)}</h3><span class="muted small num">n = ${n}</span></header>${w.length?barList(w,n):'<p class="muted">لا توجد إجابات.</p>'}<p class="muted small">أكثر الكلمات تكراراً بحسب عدد الإجابات التي وردت فيها. هذا عدّ كلمات وليس تحليل مشاعر.</p></div>`; });
+  return blocks.join('')+`<div class="grid2">${cats.join('')}${nums.join('')}${txt.join('')}</div>`; },
+ rel(){ const opt=A.use.filter(c=>c.type!=='text').map(c=>`<option>${esc(c.name)}</option>`).join(''), hv=A.outs.filter(c=>c!==A.q.dur).slice(0,12); let heat='';
+  if(hv.length>=3){ heat=`<div class="sheet"><header><h2>مصفوفة الارتباط</h2><span class="muted small">سبيرمان ρ، حذف زوجي</span></header><div class="scroll"><table class="heat"><thead><tr><th></th>${hv.map((_,i)=>`<th class="n">${i+1}</th>`).join('')}</tr></thead><tbody>${hv.map((a,i)=>`<tr><th style="text-align:start">${i+1}. ${esc(a.name)}</th>${hv.map((b,j)=>{ if(i===j) return '<td class="n muted">—</td>'; const x=[],y=[]; for(let k=0;k<S.n;k++) if(a.num[k]!=null&&b.num[k]!=null){ x.push(a.num[k]); y.push(b.num[k]); } const r=x.length>3?ST.spearman(x,y).r:NaN; return `<td class="n" style="background:color-mix(in srgb,var(${r<0?'--neg3':'--s1'}) ${Math.round(Math.abs(r||0)*70)}%,var(--surface))" data-tip="${esc(a.name)} × ${esc(b.name)}: ρ = ${f(r)}, n = ${x.length}">${f(r).replace(/0\./,'.')}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div></div>`; }
+  return `<div class="sheet"><h2>اختبر علاقة بين متغيرين</h2><p class="muted small">يختار مستبين الاختبار بحسب نوعي المتغيرين: مربع كاي للفئوي × فئوي، كروسكال–واليس للمقياس الترتيبي بين مجموعات، اختبار ت لويلش أو تحليل التباين للرقمي، وسبيرمان أو بيرسون للارتباط.</p>
+   <div class="row"><select id="va" aria-label="المتغير الأول">${opt}</select><span>×</span><select id="vb" aria-label="المتغير الثاني">${opt}</select><button class="primary" id="btnTest">اختبر</button></div><div id="testOut"></div></div>
+  <div class="sheet"><header><h2>مسح آلي لكل الفروق</h2><span class="muted small">${A.scan.length} مقارنة · التصحيح: بنجاميني–هوكبرغ عند 5%</span></header>
+   <p class="muted small">كل اختبار إضافي يرفع احتمال نتيجة دالة بالصدفة. لذلك نعرض p المعدّلة ونحكم بها. المجموعات الأقل من 5 مستبعدة.</p>${scanTable(A.scan.slice(0,25))}</div>${heat}`; },
+ reli(){ const r=A.rel; return `<div class="sheet"><h2>بنود المقياس الداخلة في الحساب</h2><div class="row">${A.scales.map((c,i)=>`<label class="pill" style="cursor:pointer"><input type="checkbox" id="ri-${i}" data-rel="${esc(c.name)}"${S.rel.has(c.name)?' checked':''}> ${esc(c.name)}</label>`).join('')||'<span class="muted">لا توجد بنود مقياس.</span>'}</div></div>
+  ${r?`<div class="sheet"><header><h2>ألفا كرونباخ</h2><span class="stat">α = ${f(r.alpha,3)}, k = ${r.k}, n = ${r.n}</span></header>
+   <p>الاتساق الداخلي <b>${alphaLabel(r.alpha)}</b>. ${r.alpha>=.7?'يمكن جمع البنود في مؤشر واحد.':'لا ننصح بجمع هذه البنود في مؤشر واحد قبل مراجعتها.'}${r.alpha>.95?' قيمة فوق 0.95 قد تعني بنوداً مكررة المعنى.':''}</p>
+   <div class="scroll"><table><thead><tr><th>البند</th><th class="n">المتوسط</th><th class="n">الانحراف</th><th class="n">ارتباط البند بالمجموع المصحّح</th><th class="n">ألفا عند الحذف</th><th>ملاحظة</th></tr></thead><tbody>${r.rows.map(x=>`<tr><td>${esc(x.name)}</td><td class="n">${f(x.mean)}</td><td class="n">${f(x.sd)}</td><td class="n">${f(x.rit,3)}</td><td class="n">${f(x.del,3)}</td><td>${x.rit<0?'<span class="pill bad">قد يكون معكوس الصياغة</span>':x.rit<.3?'<span class="pill warn">ارتباط ضعيف</span>':x.del>r.alpha+.01?'<span class="pill warn">حذفه يرفع الثبات</span>':''}</td></tr>`).join('')}</tbody></table></div>
+   <div class="row"><button id="btnComp">أضف متوسط البنود كمتغير جديد</button><span class="muted small">حذف قائمي: تدخل الاستجابات المكتملة في كل البنود المختارة فقط.</span></div></div>`:'<div class="sheet"><p class="muted">اختر بندين على الأقل من نفس المقياس.</p></div>'}`; },
+ comp(){ const c=A.comp; return `
+  <div class="sheet"><header><h2>جاهزية الامتثال</h2><b>${c.pass} من ${c.total}</b></header><div class="meter"><div style="width:${100*c.pass/c.total}%"></div></div>
+   <p class="muted small">قائمة استرشادية تساعدك على تجهيز الملف والتقرير. ليست شهادة امتثال ولا رأياً قانونياً، ولا تغني عن مراجعة مسؤول حماية البيانات.</p></div>
+  <div class="sheet"><h2>فحوص آلية على الملف</h2><div class="scroll"><table><tbody>${c.auto.map(x=>`<tr><td style="white-space:nowrap">${pill(x.s)}</td><td><b>${x.t}</b><br><span class="small">${esc(x.d)}</span></td></tr>`).join('')}</tbody></table></div>
+   <div class="row"><button class="primary" id="btnAnon">نزّل نسخة مجهولة الهوية (CSV)</button><span class="muted small">تُحذف أعمدة البيانات الشخصية والمعرّفات، وتُطمس العناوين والأرقام داخل النصوص.</span></div></div>
+  <div class="sheet"><h2>المعرّفات شبه المباشرة</h2><p class="muted small">اختر المتغيرات التي قد تكشف هوية شخص إذا اجتمعت (كالإدارة والعمر والجنس). نحسب أصغر مجموعة يشترك أفرادها في القيم نفسها.</p>
+   <div class="row">${A.cats.map((x,i)=>`<label class="pill" style="cursor:pointer"><input type="checkbox" id="qi-${i}" data-qi="${esc(x.name)}"${S.qi.has(x.name)?' checked':''}> ${esc(x.name)}</label>`).join('')||'<span class="muted">لا توجد متغيرات فئوية.</span>'}</div>
+   ${c.kan?`<p><span class="stat">k = ${c.kan.min} · ${c.kan.classes} مجموعة · ${c.kan.risk} سجل دون 5 · ${c.kan.uniq} فريد</span></p>`:''}
+   ${c.small.length?`<div class="scroll"><table><thead><tr><th>المتغير</th><th>الفئة</th><th class="n">العدد</th></tr></thead><tbody>${c.small.slice(0,12).map(s=>`<tr><td>${esc(s.col)}</td><td>${esc(s.v)}</td><td class="n">${s.n}</td></tr>`).join('')}</tbody></table></div>`:''}</div>
+  <div class="sheet"><h2>ضوابط تنظيمية تؤكدها أنت</h2><div>${MANUAL.map(m=>`<label class="check"><input type="checkbox" id="mc-${m.id}" data-check="${m.id}"${S.checks[m.id]?' checked':''}><span>${m.t}</span><small>${m.r}</small></label>`).join('')}</div></div>`; },
+ rep(){ return `<div class="sheet noprint"><h2>إعداد التقرير</h2><div class="row"><label for="title">عنوان الاستبانة</label><input type="text" id="title" value="${esc(S.title)}" style="flex:1;min-width:200px"></div>
+   <div class="row"><button class="primary" id="btnRep">نزّل التقرير (HTML)</button><button id="btnXls">نزّل الجداول (Excel)</button><button id="btnCopy">انسخ الملخص التنفيذي</button>${window.claude?'':'<button id="btnPrint">اطبع أو احفظ PDF</button>'}</div>
+   <p class="muted small">ملف التقرير يفتح في أي متصفح، ومنه تطبعه أو تحفظه PDF.</p></div><div class="paper" id="paper">${report()}</div>`; }
+};
+function report(){ const c=A.comp,q=A.q,sig=A.scan.filter(r=>r.padj<.05),prob=S.checks.prob,today=new Date().toISOString().slice(0,10);
+  const lim=[]; if(!prob) lim.push('لم يُؤكَّد أن العينة احتمالية، فلا تُعمَّم النسب على المجتمع وهامش الخطأ استرشادي.'); if(q.missRate>=.05) lim.push(`نسبة المفقود ${pc(q.missRate)} وقد تؤثر في التقديرات.`); if(q.dup) lim.push(`${q.dup} صفوف مكررة لم تُحذف.`); if(q.straight&&A.scales.length>=5) lim.push(`${q.straight} استجابة نمطية لم تُستبعد.`); if(A.rel&&A.rel.alpha<.7) lim.push('ثبات المقياس دون 0.70.'); lim.push('لم تُطبَّق أوزان ترجيح. النتائج تصف المجيبين كما هم.'); lim.push('الاختبارات ثنائية المتغير ولا تضبط أثر متغيرات أخرى.');
+  return `<section><p class="muted small">تقرير تحليل استبانة · ${today}${S.sample?' · بيانات تجريبية مولّدة':''}</p><h1>${esc(S.title||'تقرير الاستبانة')}</h1></section>
+  <section><h2>الملخص التنفيذي</h2><ul class="clean" id="exec">${findings().map(x=>`<li>${x}</li>`).join('')}</ul></section>
+  <section><h2>المنهجية والإفصاح</h2><div class="scroll"><table><tbody>
+   <tr><th>عدد الاستجابات</th><td class="num">${S.n}</td></tr><tr><th>حجم المجتمع</th><td>${S.pop?'<span class="num">'+S.pop+'</span>':'غير محدد'}</td></tr>
+   <tr><th>نوع العينة</th><td>${prob?'احتمالية (بتأكيد معدّ التقرير)':'غير مؤكد أنها احتمالية'}</td></tr>
+   <tr><th>هامش الخطأ عند 95%</th><td><span class="num">±${f(100*moe(S.n,S.pop),1)}%</span> لنسبة 50%${prob?'':' (استرشادي)'}</td></tr>
+   <tr><th>المفقود</th><td><span class="num">${pc(q.missRate)}</span> من خلايا الأسئلة المغلقة، عولج بالحذف الزوجي</td></tr>
+   <tr><th>الترجيح</th><td>لا يوجد</td></tr>
+   <tr><th>الأساليب الإحصائية</th><td>تكرارات ونسب، متوسطات وفترات ثقة، ألفا كرونباخ، مربع كاي، كروسكال–واليس، اختبار ت لويلش، تحليل التباين الأحادي، ارتباط سبيرمان. مستوى الدلالة 5% بعد تصحيح بنجاميني–هوكبرغ.</td></tr></tbody></table></div></section>
+  ${A.scales.length?`<section><h2>نتائج بنود المقياس</h2>${likert(A.scales)}</section>`:''}
+  ${A.nps?`<section><h2>صافي نقاط الترويج</h2>${npsBlock(A.nps)}</section>`:''}
+  ${A.rel?`<section><h2>ثبات المقياس</h2><p>ألفا كرونباخ <span class="stat">α = ${f(A.rel.alpha,3)}, k = ${A.rel.k}, n = ${A.rel.n}</span> (${alphaLabel(A.rel.alpha)}).</p></section>`:''}
+  <section><h2>الفروق الدالة</h2>${sig.length?scanTable(sig.slice(0,15)):`<p>لم تبقَ أي مقارنة دالة بعد التصحيح (${A.scan.length} مقارنة).</p>`}</section>
+  <section><h2>خصائص المجيبين</h2><div class="grid2">${A.cats.slice(0,6).map(x=>{ const m=new Map(); x.raw.forEach(v=>{ if(v!=='') m.set(v,(m.get(v)||0)+1); }); const p=[...m].sort((a,b)=>b[1]-a[1]),t=p.reduce((a,b)=>a+b[1],0); return `<div><h3>${esc(x.name)}</h3>${barList(p.slice(0,10),t)}</div>`; }).join('')}</div></section>
+  <section><h2>الامتثال وحماية البيانات</h2><p>الجاهزية <b>${c.pass} من ${c.total}</b></p><div class="scroll"><table><tbody>${c.auto.map(x=>`<tr><td style="white-space:nowrap">${pill(x.s)}</td><td><b>${x.t}</b> — <span class="small">${esc(x.d)}</span></td></tr>`).join('')}${MANUAL.map(m=>`<tr><td style="white-space:nowrap">${pill(S.checks[m.id]?'ok':'warn')}</td><td>${m.t} <span class="muted small">(${m.r})</span></td></tr>`).join('')}</tbody></table></div><p class="muted small">قائمة استرشادية وليست شهادة امتثال أو رأياً قانونياً.</p></section>
+  <section><h2>حدود التحليل</h2><ul class="clean">${lim.map(l=>`<li>${l}</li>`).join('')}</ul></section>`; }
+
+/* ============ rendering & events ============ */
+function render(){ $('#banner').hidden=!S.sample; if(S.sample) $('#banner').textContent='تعرض الصفحة الآن بيانات تجريبية مولّدة آلياً (242 استجابة افتراضية). حمّل ملفك لتحليل بياناتك.';
+  $('#tabs').innerHTML=TABS.map(([k,l])=>`<button role="tab" id="tab-${k}" data-tab="${k}" aria-selected="${k===cur}">${l}</button>`).join('');
+  $('#panels').innerHTML=TABS.map(([k])=>`<section class="panel" id="p-${k}"${k===cur?'':' hidden'}>${P[k]()}</section>`).join(''); }
+function runTest(){ const a=S.cols.find(c=>c.name===$('#va').value),b=S.cols.find(c=>c.name===$('#vb').value),o=$('#testOut'); if(!a||!b||a===b){ o.innerHTML='<p class="muted">اختر متغيرين مختلفين.</p>'; return; }
+  const t=testPair(a,b); if(!t){ o.innerHTML='<p class="muted">لا يمكن اختبار هذا الزوج: نحتاج مجموعتين على الأقل في كل منهما مشاهدتان.</p>'; return; }
+  let d=''; if(t.detail&&t.detail.kind==='groups') d=`<div class="scroll"><table><thead><tr><th>المجموعة</th><th class="n">n</th><th class="n">المتوسط</th><th class="n">الوسيط</th><th class="n">الانحراف</th></tr></thead><tbody>${t.detail.rows.sort((x,y)=>y.mean-x.mean).map(r=>`<tr><td>${esc(r.g)}</td><td class="n">${r.n}</td><td class="n">${f(r.mean)}</td><td class="n">${f(r.median)}</td><td class="n">${f(r.sd)}</td></tr>`).join('')}</tbody></table></div>`;
+  if(t.detail&&t.detail.kind==='xtab'){ const {R,C,tab}=t.detail; d=`<div class="scroll"><table><thead><tr><th>نسب الصف</th>${C.map(x=>`<th class="n">${esc(x)}</th>`).join('')}<th class="n">n</th></tr></thead><tbody>${R.map((r,i)=>{ const s=tab[i].reduce((p,q)=>p+q,0); return `<tr><td>${esc(r)}</td>${tab[i].map(v=>`<td class="n">${pc(v/s,0)}</td>`).join('')}<td class="n">${s}</td></tr>`; }).join('')}</tbody></table></div>`; }
+  o.innerHTML=`<p><b>${t.test}</b> · <span class="stat">${t.line}</span></p><p>${t.p<.05?'العلاقة دالة إحصائياً عند 5%':'لا دليل كافياً على وجود علاقة عند 5%'}، وحجم الأثر <b>${t.esL}</b> (${t.esName}). هذا اختبار منفرد غير مصحّح للمقارنات المتعددة.</p>${t.warn?`<p class="small"><span class="pill warn">تنبيه</span> ${t.warn}</p>`:''}${d}`; }
+async function saveFile(filename,data,mime){ let d=null; try{ d=window.claude&&window.claude.use?await window.claude.use('downloads'):null; }catch(e){}
+  if(d){ try{ await d.save({filename,data}); toast('حُفظ الملف'); }catch(e){ if(!e||e.code!=='declined') toast('تعذّر حفظ الملف في هذا العرض'); } return; }
+  if(window.claude){ toast('التنزيل غير متاح في هذا العرض'); return; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(data instanceof Blob?data:new Blob([data],{type:mime})); a.download=filename; document.body.appendChild(a); a.click(); a.remove(); }
+const csvCell=v=>/[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;
+function anonCSV(){ const cols=S.cols.filter(c=>!['pii','id','ignore'].includes(c.type)); return '﻿'+[cols.map(c=>csvCell(c.name)).join(',')].concat(Array.from({length:S.n},(_,i)=>cols.map(c=>csvCell(c.type==='text'?scrub(c.raw[i]):c.raw[i])).join(','))).join('\n'); }
+function workbook(){ const wb=XLSX.utils.book_new(),add=(n,r)=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(r),n);
+  add('المتغيرات',[['المتغير','النوع','مُجاب','مفقود','المتوسط','الانحراف المعياري','الوسيط']].concat(A.use.map(c=>{ const v=vals(c),d=c.num&&v.length>1?ST.desc(v):null; return [c.name,TYPES[c.type],v.length,S.n-v.length,d?+d.mean.toFixed(3):'',d?+d.sd.toFixed(3):'',d?d.median:'']; })));
+  const fr=[['المتغير','الفئة','العدد','النسبة %']]; A.use.filter(c=>c.type==='categorical'||c.type==='scale').forEach(c=>{ const m=new Map(),L=c.type==='scale'?scaleLabels(c):null; (c.num||c.raw).forEach(v=>{ if(v!==''&&v!=null) m.set(v,(m.get(v)||0)+1); }); const t=[...m.values()].reduce((a,b)=>a+b,0); [...m].sort((a,b)=>c.num?a[0]-b[0]:b[1]-a[1]).forEach(([k,n])=>fr.push([c.name,L?(L[k-c.lo]||k):k,n,+(100*n/t).toFixed(1)])); }); add('التكرارات',fr);
+  add('الفروق',[['المتغير','بحسب','الاختبار','النتيجة','p','p المعدّلة','حجم الأثر','التصنيف']].concat(A.scan.map(r=>[r.b,r.a,r.test,r.line,+r.p.toPrecision(4),+r.padj.toPrecision(4),+r.es.toFixed(3),r.esL])));
+  if(A.rel) add('الثبات',[['ألفا كرونباخ',+A.rel.alpha.toFixed(3),'n',A.rel.n],[],['البند','المتوسط','الانحراف','ارتباط البند بالمجموع','ألفا عند الحذف']].concat(A.rel.rows.map(x=>[x.name,+x.mean.toFixed(3),+x.sd.toFixed(3),+x.rit.toFixed(3),isFinite(x.del)?+x.del.toFixed(3):''])));
+  add('الامتثال',[['البند','الحالة','التفصيل']].concat(A.comp.auto.map(x=>[x.t,{ok:'مستوفى',warn:'يحتاج مراجعة',bad:'غير مستوفى',na:'لا ينطبق'}[x.s],x.d]),MANUAL.map(m=>[m.t,S.checks[m.id]?'مؤكَّد':'غير مؤكَّد',m.r])));
+  wb.Workbook={Views:[{RTL:true}]}; return XLSX.write(wb,{type:'array',bookType:'xlsx'}); }
+document.addEventListener('click',e=>{ const t=e.target.closest('button,[data-tab]'); if(!t) return;
+  if(t.dataset.tab){ cur=t.dataset.tab; render(); return; }
+  const id=t.id;
+  if(id==='btnSample') sampleData();
+  else if(id==='btnPaste'){ const v=$('#paste').value.trim(); v?loadTable(parseCSV(v),'بيانات ملصوقة'):toast('الصق جدولاً أولاً'); }
+  else if(id==='btnTest') runTest();
+  else if(id==='btnComp'){ const items=A.scales.filter(c=>S.rel.has(c.name)),name='مؤشر مركّب ('+items.length+' بنود)'; if(S.cols.some(c=>c.name===name)){ toast('المؤشر مضاف من قبل'); return; } const raw=Array.from({length:S.n},(_,i)=>{ const r=items.map(c=>c.num[i]); return r.every(x=>x!=null)?String(+ST.mean(r).toFixed(3)):''; }); const c=makeCol(name,raw); setType(c,'numeric'); S.cols.push(c); analyze(); toast('أُضيف المؤشر إلى المتغيرات'); }
+  else if(id==='btnAnon') saveFile('mostabeen-anonymized.csv',anonCSV(),'text/csv');
+  else if(id==='btnRep') saveFile('mostabeen-report.html','<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(S.title)+'</title><style>'+$('#app-style').textContent+'</style></head><body><div class="wrap" dir="rtl"><div class="paper">'+report()+'</div></div></body></html>','text/html');
+  else if(id==='btnXls'){ if(!window.XLSX){ toast('مكتبة Excel لم تُحمَّل'); return; } saveFile('mostabeen-tables.xlsx',new Blob([workbook()]),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); }
+  else if(id==='btnCopy'){ const txt=[...document.querySelectorAll('#exec li')].map(li=>'• '+li.textContent).join('\n'); (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>toast('نُسخ الملخص'),()=>{ const r=document.createRange(); r.selectNodeContents($('#exec')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); toast('حُدّد النص. انسخه يدوياً'); }); }
+  else if(id==='btnPrint') window.print();
+});
+document.addEventListener('change',e=>{ const t=e.target;
+  if(t.id==='file'&&t.files[0]){ readFile(t.files[0]); t.value=''; }
+  else if(t.dataset.col){ const c=S.cols[+t.dataset.col]; setType(c,t.value); if(t.value!=='pii') c.pii=c.pii||null; S.rel=null; S.qi=null; analyze(); }
+  else if(t.dataset.rel){ t.checked?S.rel.add(t.dataset.rel):S.rel.delete(t.dataset.rel); analyze(); }
+  else if(t.dataset.qi){ t.checked?S.qi.add(t.dataset.qi):S.qi.delete(t.dataset.qi); analyze(); }
+  else if(t.dataset.check){ S.checks[t.dataset.check]=t.checked; try{ localStorage.setItem('mostabeen.checks',JSON.stringify(S.checks)); }catch(_){} analyze(); }
+  else if(t.id==='pop'){ S.pop=+t.value>0?+t.value:null; analyze(); }
+  else if(t.id==='title'){ S.title=t.value; $('#paper').innerHTML=report(); }
+});
+document.addEventListener('dragover',e=>{ const d=e.target.closest&&e.target.closest('#drop'); if(d){ e.preventDefault(); d.classList.add('over'); } });
+document.addEventListener('dragleave',e=>{ const d=e.target.closest&&e.target.closest('#drop'); if(d) d.classList.remove('over'); });
+document.addEventListener('drop',e=>{ const d=e.target.closest&&e.target.closest('#drop'); if(d){ e.preventDefault(); d.classList.remove('over'); if(e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); } });
+const tip=$('#tip'); document.addEventListener('mousemove',e=>{ const t=e.target.closest&&e.target.closest('[data-tip]'); if(!t){ tip.hidden=true; return; } tip.textContent=t.dataset.tip; tip.hidden=false; const w=tip.offsetWidth; tip.style.left=Math.max(6,Math.min(innerWidth-w-6,e.clientX-w/2))+'px'; tip.style.top=(e.clientY+16)+'px'; });
+sampleData();
+</script>
+</body></html>
