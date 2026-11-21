@@ -106,7 +106,7 @@ ul.clean{margin:0;padding-inline-start:20px;display:flex;flex-direction:column;g
   <header class="top">
     <div class="brand"><b>مُستبين</b><span class="muted">تحليل الاستبانات · الإحصاء · الامتثال · التقارير</span></div>
     <div class="actions">
-      <label class="btn primary" for="file">حمّل ملف استبانة</label>
+      <button class="primary" id="btnFile" type="button">حمّل ملف استبانة</button>
       <input type="file" id="file" accept=".csv,.tsv,.txt,.xlsx,.xls" hidden>
       <button id="btnSample">بيانات تجريبية</button>
     </div>
@@ -129,7 +129,9 @@ const pstr=p=>p<.001?'p < .001':'p = '+pf(p);
 const pc=(x,d=1)=>x==null||!isFinite(x)?'—':(100*x).toFixed(d)+'%';
 const AR_NORM=s=>String(s).replace(/[ً-ْـ]/g,'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ').trim().toLowerCase();
 const latin=s=>s.replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/٫/g,'.');
-function toNum(v){ if(v==null) return null; const s=latin(String(v).trim()); if(!/^-?\d+(\.\d+)?$/.test(s)) return null; return +s; }
+function toNum(v){ if(v==null) return null; let s=latin(String(v).trim()).replace(/^\u2212/,'-').replace(/^\+/,'').replace(/\s?[%٪]$/,'');
+  if(/^-?\d{1,3}([,٬]\d{3})+(\.\d+)?$/.test(s)) s=s.replace(/[,٬]/g,''); else if(/^-?\d+,\d+$/.test(s)) s=s.replace(',','.');
+  if(!/^-?\d+(\.\d+)?$/.test(s)) return null; return +s; }
 function toast(m){ const t=$('#toast'); t.textContent=m; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,2600); }
 
 /* ============ statistics engine ============ */
@@ -154,64 +156,82 @@ const ST={
     return {n,mean:m,sd,median:ST.q(s,.5),q1:ST.q(s,.25),q3:ST.q(s,.75),min:s[0],max:s[n-1],lo:m-tc*se,hi:m+tc*se,skew:sk}; },
   rank(a){ const idx=a.map((v,i)=>[v,i]).sort((x,y)=>x[0]-y[0]),r=new Array(a.length),ties=[]; let i=0; while(i<idx.length){ let j=i; while(j+1<idx.length&&idx[j+1][0]===idx[i][0]) j++; const rk=(i+j)/2+1; for(let k=i;k<=j;k++) r[idx[k][1]]=rk; if(j>i) ties.push(j-i+1); i=j+1; } return {r,ties}; },
   pearson(x,y){ const n=x.length,mx=ST.mean(x),my=ST.mean(y); let sxy=0,sxx=0,syy=0; for(let i=0;i<n;i++){ sxy+=(x[i]-mx)*(y[i]-my); sxx+=(x[i]-mx)**2; syy+=(y[i]-my)**2; } const r=sxy/Math.sqrt(sxx*syy); const t=r*Math.sqrt((n-2)/(1-r*r)); return {r,n,p:n>2&&Math.abs(r)<1?ST.pT(t,n-2):(Math.abs(r)>=1?0:NaN)}; },
-  spearman(x,y){ return ST.pearson(ST.rank(x).r,ST.rank(y).r); },
-  welch(a,b){ const n1=a.length,n2=b.length,m1=ST.mean(a),m2=ST.mean(b),v1=ST.vari(a),v2=ST.vari(b); const se=Math.sqrt(v1/n1+v2/n2),t=(m1-m2)/se; const df=(v1/n1+v2/n2)**2/((v1/n1)**2/(n1-1)+(v2/n2)**2/(n2-1)); const sp=Math.sqrt(((n1-1)*v1+(n2-1)*v2)/(n1+n2-2)); return {t,df,p:ST.pT(t,df),d:(m1-m2)/sp}; },
+  spearman(x,y){ const o=ST.pearson(ST.rank(x).r,ST.rank(y).r); if(Math.abs(o.r)>=1&&o.n<=10){ let fct=1; for(let i=2;i<=o.n;i++) fct*=i; o.p=Math.min(1,2/fct); } return o; },
+  welch(a,b){ const n1=a.length,n2=b.length,m1=ST.mean(a),m2=ST.mean(b),v1=ST.vari(a),v2=ST.vari(b); const se=Math.sqrt(v1/n1+v2/n2); if(!(se>0)){ const g=Math.sign(m1-m2); return g===0?{t:0,df:n1+n2-2,p:1,d:0}:{t:g*Infinity,df:n1+n2-2,p:0,d:g*Infinity,degenerate:true}; } const t=(m1-m2)/se; const df=(v1/n1+v2/n2)**2/((v1/n1)**2/(n1-1)+(v2/n2)**2/(n2-1)); const sp=Math.sqrt(((n1-1)*v1+(n2-1)*v2)/(n1+n2-2)); return {t,df,p:ST.pT(t,df),d:(m1-m2)/sp}; },
   anova(gs){ const all=gs.flat(),N=all.length,k=gs.length,gm=ST.mean(all); let ssb=0,ssw=0; for(const g of gs){ const m=ST.mean(g); ssb+=g.length*(m-gm)**2; for(const x of g) ssw+=(x-m)**2; } const F=(ssb/(k-1))/(ssw/(N-k)); return {F,df1:k-1,df2:N-k,p:ST.pF(F,k-1,N-k),eta2:ssb/(ssb+ssw)}; },
   kw(gs){ const all=gs.flat(),N=all.length,{r,ties}=ST.rank(all); let H=0,o=0; for(const g of gs){ let s=0; for(let i=0;i<g.length;i++) s+=r[o+i]; o+=g.length; H+=s*s/g.length; } H=12/(N*(N+1))*H-3*(N+1); let T=0; for(const t of ties) T+=t**3-t; const C=1-T/(N**3-N); H=C>0?H/C:0; const df=gs.length-1; return {H,df,p:ST.pChi(H,df),eps2:H/(N-1)}; },
   chi2(tab){ const R=tab.length,C=tab[0].length,rs=tab.map(r=>r.reduce((a,b)=>a+b,0)),cs=tab[0].map((_,j)=>tab.reduce((a,r)=>a+r[j],0)),N=rs.reduce((a,b)=>a+b,0); let x=0,low=0; for(let i=0;i<R;i++) for(let j=0;j<C;j++){ const e=rs[i]*cs[j]/N; if(e<5) low++; x+=(tab[i][j]-e)**2/e; } const df=(R-1)*(C-1); return {x,df,p:ST.pChi(x,df),v:Math.sqrt(x/(N*Math.min(R-1,C-1))),N,lowShare:low/(R*C)}; },
   alpha(M){ const k=M[0].length; if(k<2||M.length<3) return NaN; let sv=0; for(let j=0;j<k;j++) sv+=ST.vari(M.map(r=>r[j])); const tv=ST.vari(M.map(r=>r.reduce((a,b)=>a+b,0))); return k/(k-1)*(1-sv/tv); },
   bh(ps){ const m=ps.length,o=ps.map((p,i)=>[p,i]).sort((a,b)=>a[0]-b[0]),adj=new Array(m); let mn=1; for(let i=m-1;i>=0;i--){ mn=Math.min(mn,o[i][0]*m/(i+1)); adj[o[i][1]]=mn; } return adj; }
 };
-const esLabel=(v,cuts)=>{ v=Math.abs(v); return v<cuts[0]?'ضئيل':v<cuts[1]?'صغير':v<cuts[2]?'متوسط':'كبير'; };
+const esLabel=(v,cuts)=>{ if(v==null||Number.isNaN(v)) return '—'; v=Math.abs(v); return v<cuts[0]?'ضئيل':v<cuts[1]?'صغير':v<cuts[2]?'متوسط':'كبير'; };
 
 /* ============ scale label families ============ */
 const FAM=[
  {labels:['غير موافق بشدة','غير موافق','محايد','موافق','موافق بشدة'],alt:[['strongly disagree','لا اوافق بشده','غير موافق تماما','اعارض بشده'],['disagree','لا اوافق','اعارض'],['neutral','neither agree nor disagree','لا ادري'],['agree','اوافق'],['strongly agree','اوافق بشده','موافق تماما']]},
- {labels:['غير راضٍ إطلاقاً','غير راضٍ','محايد','راضٍ','راضٍ جداً'],alt:[['very dissatisfied','غير راض اطلاقا','غير راضي اطلاقا','غير راض جدا','غير راضي جدا','مستاء جدا'],['dissatisfied','غير راض','غير راضي','مستاء'],['neutral'],['satisfied','راض','راضي'],['very satisfied','راض جدا','راضي جدا','راض تماما','راضي تماما']]},
+ {labels:['غير راضٍ إطلاقاً','غير راضٍ','محايد','راضٍ','راضٍ جداً'],alt:[['very dissatisfied','غير راض تماما','غير راضي تماما','غير راض اطلاقا','غير راضي اطلاقا','غير راض جدا','غير راضي جدا','مستاء جدا'],['dissatisfied','غير راض','غير راضي','مستاء'],['neutral'],['satisfied','راض','راضي'],['very satisfied','راض جدا','راضي جدا','راض تماما','راضي تماما']]},
  {labels:['أبداً','نادراً','أحياناً','غالباً','دائماً'],alt:[['never','مطلقا'],['rarely'],['sometimes'],['often'],['always']]},
  {labels:['ضعيف','مقبول','جيد','جيد جداً','ممتاز'],alt:[['poor','سيئ','سيء'],['fair'],['good'],['very good'],['excellent']]}
 ];
 FAM.forEach(F=>{ F.map={}; F.labels.forEach((l,i)=>{ F.map[AR_NORM(l)]=i+1; F.alt[i].forEach(a=>F.map[AR_NORM(a)]=i+1); }); });
 
 /* ============ personal-data detection ============ */
-const PII_NAME=[[/(e-?mail|بريد|ايميل|إيميل)/i,'بريد إلكتروني'],[/(phone|mobile|جوال|هاتف|موبايل|تلفون)/i,'رقم هاتف'],[/(national id|iqama|هوية|هويه|إقامة|اقامة|سجل مدني|passport|جواز)/i,'رقم هوية'],[/^(الاسم|اسم|name)$|full ?name|first ?name|last ?name|الاسم الكامل|الاسم الأول|الاسم الاول|اسم العائلة|اسم الموظف|اسم المستجيب|اسم المشارك/i,'اسم شخص'],[/(\bip\b|ip address)/i,'عنوان IP']];
-const RX={'بريد إلكتروني':/[\w.+-]+@[\w-]+\.[\w.-]+/g,'رقم هاتف':/(?:\+?966[\s-]?|0)5\d{8}(?!\d)|\+\d{10,14}/g,'رقم هوية':/(?<!\d)[12]\d{9}(?!\d)/g,'عنوان IP':/(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])/g};
-function piiKind(name,vals){ for(const [rx,k] of PII_NAME) if(rx.test(name)) return k; if(!vals.length) return null;
-  for(const k in RX){ let c=0; for(const v of vals){ RX[k].lastIndex=0; const m=RX[k].exec(latin(v)); if(m&&m[0].length>=latin(v).trim().length*.8) c++; } if(c/vals.length>=.5) return k; } return null; }
-function textPII(v){ let c=0; const s=latin(v); for(const k in RX){ RX[k].lastIndex=0; if(RX[k].test(s)) c++; } return c>0; }
-function scrub(v){ let s=latin(v); for(const k in RX) s=s.replace(RX[k],'[محذوف]'); return s; }
+const PII_NAME=[[/(e-?mail|بريد|ايميل|إيميل)/i,'بريد إلكتروني'],[/(phone|mobile|whatsapp|\btel\b|contact (number|no)|جوال|هاتف|موبايل|تلفون|واتساب|رقم التواصل)/i,'رقم هاتف'],[/(national id|iqama|هوية|هويه|إقامة|اقامة|سجل مدني|passport|جواز)/i,'رقم هوية'],[/^(?!.*(اسم (ال)?(إدارة|ادارة|قسم|شركة|جهة|مشروع|منتج|دورة|فرع|مدينة)|(company|product|department|brand|course|file|branch|city) ?name)).*(\bname\b|username|(^|\s)(ال)?اسم(ك|كم)?(\s|$))/i,'اسم شخص'],[/(\bip\b|ip address)/i,'عنوان IP']];
+const RX={'بريد إلكتروني':/[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu,'رقم هوية':/(?<!\d)[12]\d{9}(?!\d)/g,'رقم هاتف':/(?<![\d.])(?:\+|00)?\(?\d{1,4}\)?(?:[\s.-]?\d{2,4}){2,4}(?![\d.])/g,'عنوان IP':/(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])/g};
+// A phone-shaped match counts only with 9–15 digits and when it is not a date.
+const piiOk=(k,m)=>{ if(k!=='رقم هاتف') return true; const d=m.replace(/\D/g,'').length; return d>=9&&d<=15&&!/^\d{4}[-.]\d{1,2}[-.]\d{1,2}|^\d{1,2}[-.]\d{1,2}[-.]\d{4}/.test(m.trim()); };
+const idCheck=s=>{ let t=0; for(let i=0;i<10;i++){ const d=+s[i]; if(i%2===0){ const x=d*2; t+=x>9?x-9:x; } else t+=d; } return t%10===0; };
+function piiKind(name,vals){ const dist=new Set(vals).size, closed=vals.length&&dist<=11&&vals.length>dist*2;   // few repeated values cannot be contact details
+  if(!closed) for(const [rx,k] of PII_NAME) if(rx.test(name)) return k;
+  if(!vals.length||closed) return null;
+  for(const k in RX){ let c=0; for(const v of vals){ const s=latin(v).trim(); RX[k].lastIndex=0; const m=RX[k].exec(s); if(m&&m[0].length>=s.length*.8&&piiOk(k,m[0])&&(k!=='رقم هوية'||idCheck(m[0]))) c++; else if(k==='رقم هاتف'&&/^5\d{8}$/.test(s)) c++; }
+    if(c/vals.length>=.5&&(k!=='رقم هوية'||dist/vals.length>.9)) return k; } return null; }
+function textPII(v){ const s=latin(v); for(const k in RX){ RX[k].lastIndex=0; let m; while((m=RX[k].exec(s))){ if(piiOk(k,m[0])) return true; if(!m[0].length) RX[k].lastIndex++; } } return false; }
+function scrub(v){ let s=latin(v); for(const k in RX) s=s.replace(RX[k],m=>piiOk(k,m)?'[محذوف]':m); return s; }
 
 /* ============ data model ============ */
 const TYPES={scale:'مقياس ترتيبي (ليكرت)',numeric:'رقمي',nps:'توصية 0–10 (NPS)',categorical:'فئوي',text:'نص مفتوح',pii:'بيانات شخصية',id:'معرّف',ignore:'تجاهل'};
 const S={name:'',sample:false,cols:[],n:0,pop:null,qi:null,rel:null,checks:{},title:''};
-try{ S.checks=JSON.parse(localStorage.getItem('mostabeen.checks')||'{}'); }catch(e){}
-const MISSING=new Set(['','na','n/a','null','-','—','لا يوجد']);
-function makeCol(name,raw){ const c={name,raw:raw.map(v=>{ const s=v==null?'':String(v).trim(); return MISSING.has(s.toLowerCase())&&s!=='لا يوجد'?'':s; }),type:'categorical',num:null,fam:null,pii:null}; autoType(c); return c; }
-function autoType(c){ const vals=c.raw.filter(v=>v!==''),n=vals.length,dist=new Set(vals).size; c.pii=piiKind(c.name,vals);
-  if(c.pii) return setType(c,'pii'); if(!n) return setType(c,'ignore');
-  let best=null,bs=0; for(const F of FAM){ const sh=vals.filter(v=>F.map[AR_NORM(v)]).length/n; if(sh>bs){bs=sh;best=F;} }
+const MISSING=new Set(['','na','n/a','null','-','—']), NA_TOKENS=new Set(['لا يوجد','لا ينطبق','لا أعرف','لا اعرف']);
+const NPS_RX=/\bnps\b|توصي(?!ل|ات)|يوصي|recommend/i;
+function bestFam(vs){ let b=null,bs=0; for(const F of FAM){ const sh=vs.filter(v=>F.map[AR_NORM(v)]).length/(vs.length||1); if(sh>bs){bs=sh;b=F;} } return [b,bs]; }
+function makeCol(name,raw){ const c={name,raw:raw.map(v=>{ const s=v==null?'':String(v).trim(); return MISSING.has(s.toLowerCase())?'':s; }),type:'categorical',num:null,fam:null,pii:null,unmapped:0}; autoType(c); return c; }
+function autoType(c){ const all=c.raw.filter(v=>v!==''); c.pii=piiKind(c.name,all);
+  if(c.pii) return setType(c,'pii'); if(!all.length) return setType(c,'ignore');
+  const vals=all.filter(v=>!NA_TOKENS.has(v)),n=vals.length||1,dist=new Set(vals).size;      // "not applicable" answers do not decide the type
+  const [best,bs]=bestFam(vals);
   if(bs>=.9&&dist>=2){ c.fam=best; return setType(c,'scale'); }
   const nums=vals.map(toNum).filter(x=>x!=null);
-  if(nums.length/n>=.95){ const ints=nums.every(Number.isInteger),mn=Math.min(...nums),mx=Math.max(...nums),nd=new Set(nums).size;
-    if(/^(id|#|م|رقم|رقم الاستجابة|رقم المستجيب|respondent ?id|response ?id)$/i.test(c.name.trim())||(/(^|\s)(id|معرف|معرّف)(\s|$)/i.test(c.name)&&nd===nums.length)) return setType(c,'id');
-    if(ints&&mn>=0&&mx<=10&&(nd>=8||/nps|توصي|recommend/i.test(c.name))) return setType(c,'nps');
-    if(ints&&mn>=1&&mx<=7&&nd<=7) return setType(c,'scale');
+  if(nums.length&&nums.length/n>=.95){ const ints=nums.every(Number.isInteger),mn=Math.min(...nums),mx=Math.max(...nums),nd=new Set(nums).size,uniq=nd===nums.length;
+    const seq=uniq&&ints&&nums.length>=10&&mx-mn===nums.length-1;                                // 1,2,3… row counters
+    if(/^(id|#|م|رقم|رقم الاستجابة|رقم المستجيب|respondent ?id|response ?id)$/i.test(c.name.trim())||seq||(uniq&&(/(^|[^a-z])id($|[^a-z])|معرف|معرّف|رقم\s+(ال)?(موظف|طالب|ملف|عضوية|وظيفي|جامعي|مستجيب|استجابة)|الرقم\s+(الوظيفي|الجامعي)/i.test(c.name)||/[a-z]ID$/.test(c.name)))) return setType(c,'id');
+    if(ints&&mn>=0&&mx<=10&&((mn===0&&mx===10)||(mx>7&&NPS_RX.test(c.name)))) return setType(c,'nps');
+    if(ints&&mn>=0&&mx<=7&&nd>=3&&nd<=8) return setType(c,'scale');
+    if(ints&&nd<=2) return setType(c,'categorical');                                              // 1/2 codes are almost always nominal
     return setType(c,'numeric'); }
   const avg=vals.reduce((a,v)=>a+v.length,0)/n;
-  if(dist===n&&n>20&&avg<24&&!/\s/.test(vals[0])) return setType(c,'id');
+  if(dist===vals.length&&vals.length>=10&&avg<24&&!/\s/.test(vals[0])) return setType(c,'id');
   const wc=vals.reduce((a,v)=>a+v.split(/\s+/).length,0)/n;
   if(dist>Math.max(12,.4*n)||avg>40||(wc>=3&&dist>=8)) return setType(c,'text');
   setType(c,'categorical'); }
-function setType(c,t){ c.type=t; c.num=null; if(t==='scale'||t==='numeric'||t==='nps'){ c.num=c.raw.map(v=>v===''?null:(c.fam&&c.fam.map[AR_NORM(v)])||toNum(v)); const xs=c.num.filter(x=>x!=null);
-    if(t==='scale'){ const mx=xs.length?Math.max(...xs):5,mn=xs.length?Math.min(...xs):1; c.lo=c.fam?1:Math.min(1,mn); c.hi=c.fam?5:(mx<=5?5:mx<=7?7:mx); } } }
+function setType(c,t){ c.type=t; c.num=null; c.unmapped=0;
+  if(t==='scale'&&!c.fam){ const vs=c.raw.filter(v=>v!==''&&!NA_TOKENS.has(v)),[b,bs]=bestFam(vs); if(bs>=.5) c.fam=b; }
+  if(t==='scale'||t==='numeric'||t==='nps'){ const fam=t==='scale'?c.fam:null;
+    c.num=c.raw.map(v=>{ if(v==='') return null; const x=(fam&&fam.map[AR_NORM(v)])||toNum(v); if(x==null&&!NA_TOKENS.has(v)) c.unmapped++; return x; });
+    const xs=c.num.filter(x=>x!=null);
+    if(t==='scale'){ const mx=xs.length?Math.max(...xs):5,mn=xs.length?Math.min(...xs):1; c.lo=fam?1:(mn<1?0:1); c.obs=Math.ceil(mx); c.hi=fam?5:Math.max(c.obs,c.lo+1); } } }
+// Can this column be shown as an ordinal scale? Integers only, at most 11 points.
+function scaleOk(c){ const vs=c.raw.filter(v=>v!==''&&!NA_TOKENS.has(v)); if(bestFam(vs)[1]>=.5) return true; const xs=vs.map(toNum).filter(x=>x!=null); return xs.length>0&&xs.every(Number.isInteger)&&Math.min(...xs)>=0&&Math.max(...xs)<=10; }
 const vals=c=>c.num?c.num.filter(x=>x!=null):c.raw.filter(v=>v!=='');
 const byType=(...t)=>S.cols.filter(c=>t.includes(c.type));
 function loadTable(rows,name,sample){ rows=rows.filter(r=>r&&r.some(v=>v!=null&&String(v).trim()!=='')); if(rows.length<3){ toast('الملف لا يحتوي صفوفاً كافية: نحتاج صف عناوين وصفّي بيانات على الأقل'); return; }
-  const seen={},head=rows[0].map((h,i)=>{ let s=String(h??'').trim()||('عمود '+(i+1)); if(seen[s]) s+=' ('+(++seen[s])+')'; else seen[s]=1; return s; });
-  const body=rows.slice(1); S.cols=head.map((h,j)=>makeCol(h,body.map(r=>r[j]))); S.n=body.length; S.name=name; S.sample=!!sample; S.qi=null; S.rel=null; S.pop=null; S.title=sample?'استبانة الارتباط الوظيفي (مثال)':name.replace(/\.[^.]+$/,'');
+  const seen=new Set(),head=rows[0].map((h,i)=>{ const b=String(h??'').replace(/\s+/g,' ').trim()||('عمود '+(i+1)); let s=b,k=1; while(seen.has(s)) s=b+' ('+(++k)+')'; seen.add(s); return s; });
+  const body=rows.slice(1); S.cols=head.map((h,j)=>makeCol(h,body.map(r=>r[j]))); S.n=body.length; S.name=name; S.sample=!!sample; S.qi=null; S.rel=null; S.pop=null; S.pair=null; S.checks={}; S.title=sample?'استبانة الارتباط الوظيفي (مثال)':name.replace(/\.[^.]+$/,'');
   analyze(); }
-function parseCSV(text){ text=text.replace(/^﻿/,''); const first=text.split(/\r?\n/,1)[0]; const delim=['\t',';',','].map(d=>[d,first.split(d).length]).sort((a,b)=>b[1]-a[1])[0][0];
-  const rows=[]; let row=[],cur='',q=false; for(let i=0;i<text.length;i++){ const ch=text[i]; if(q){ if(ch==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; } else if(ch==='"') q=true; else if(ch===delim){ row.push(cur); cur=''; } else if(ch==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; } else if(ch!=='\r') cur+=ch; }
+function parseCSV(text){ text=text.replace(/^﻿/,'').replace(/\r\n?/g,'\n');
+  const cnt={'\t':0,';':0,',':0}; for(let i=0,q=false;i<text.length;i++){ const ch=text[i]; if(ch==='"') q=!q; else if(!q){ if(ch==='\n') break; if(ch in cnt) cnt[ch]++; } }
+  const delim=['\t',';',','].sort((a,b)=>cnt[b]-cnt[a])[0];
+  const rows=[]; let row=[],cur='',q=false; for(let i=0;i<text.length;i++){ const ch=text[i]; if(q){ if(ch==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; } else if(ch==='"'&&cur==='') q=true; else if(ch===delim){ row.push(cur); cur=''; } else if(ch==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; } else cur+=ch; }
   if(cur!==''||row.length){ row.push(cur); rows.push(row); } return rows; }
 function readFile(file){ const r=new FileReader(); const xl=/\.xlsx?$/i.test(file.name);
   r.onerror=()=>toast('تعذّرت قراءة الملف');
@@ -234,6 +254,7 @@ function sampleData(){ let seed=20261121; const rnd=()=>{ seed|=0; seed=seed+0x6
 let A={};
 function analyze(){
   const scales=byType('scale'), outs=byType('scale','numeric','nps'), cats=byType('categorical'), texts=byType('text'), use=S.cols.filter(c=>!['id','pii','ignore'].includes(c.type));
+  const top={}; scales.forEach(c=>{ if(!c.fam) top[c.lo]=Math.max(top[c.lo]||0,c.obs); }); scales.forEach(c=>{ if(!c.fam) c.hi=Math.max(top[c.lo],c.lo+1); });   // a battery shares its top point
   A={scales,outs,cats,texts,use};
   /* quality */
   const closed=use.filter(c=>c.type!=='text'); let cells=0,miss=0,full=0; const rowMiss=new Array(S.n).fill(0);
@@ -244,40 +265,40 @@ function analyze(){
   let speed=null; if(dur){ const xs=vals(dur),med=ST.q([...xs].sort((a,b)=>a-b),.5); speed={col:dur.name,med,cut:med/3,n:xs.filter(x=>x<med/3).length}; }
   A.q={cells,miss,missRate:cells?miss/cells:0,full,dup,straight,speed,dur};
   /* reliability */
-  if(!S.rel) S.rel=new Set(scales.filter(c=>c.hi===(scales[0]||{}).hi).map(c=>c.name));
+  if(!S.rel) S.rel=new Set(scales.filter(c=>c.hi===(scales[0]||{}).hi).map(c=>c.name)); else S.rel=new Set(scales.filter(c=>S.rel.has(c.name)).map(c=>c.name));
   A.rel=reliability(scales.filter(c=>S.rel.has(c.name)));
   /* nps */
-  const np=byType('nps')[0]; A.nps=np?nps(np):null;
+  const ns=byType('nps').filter(c=>vals(c).length),np=ns.find(c=>NPS_RX.test(c.name))||ns[0]; A.nps=np?nps(np):null;
   /* automatic scan with FDR */
   const res=[], g=cats.filter(c=>{ const k=new Set(c.raw.filter(v=>v!=='')).size; return k>=2&&k<=8; });
   for(const a of g){ for(const b of outs){ if(b===dur) continue; const t=testPair(a,b,5); if(t&&isFinite(t.p)) res.push({a:a.name,b:b.name,...t}); } }
   for(let i=0;i<g.length;i++) for(let j=i+1;j<g.length;j++){ const t=testPair(g[i],g[j],5); if(t&&isFinite(t.p)) res.push({a:g[i].name,b:g[j].name,...t}); }
   const adj=ST.bh(res.map(r=>r.p)); res.forEach((r,i)=>r.padj=adj[i]); res.sort((x,y)=>x.padj-y.padj||x.p-y.p); A.scan=res;
   /* compliance */
-  if(!S.qi) S.qi=new Set(cats.slice(0,3).map(c=>c.name));
+  if(!S.qi) S.qi=new Set(cats.slice(0,3).map(c=>c.name)); else S.qi=new Set(cats.filter(c=>S.qi.has(c.name)).map(c=>c.name));
   A.comp=compliance();
   render(); }
-function nps(c){ const xs=vals(c),n=xs.length,p=xs.filter(x=>x>=9).length/n,d=xs.filter(x=>x<=6).length/n,se=Math.sqrt((p+d-(p-d)**2)/n); return {name:c.name,n,p,d,pa:1-p-d,score:100*(p-d),lo:100*(p-d-1.96*se),hi:100*(p-d+1.96*se)}; }
+function nps(c){ const xs=vals(c),n=xs.length,p=xs.filter(x=>x>=9).length/n,d=xs.filter(x=>x<=6).length/n,se=Math.sqrt((p+d-(p-d)**2)/n); return {name:c.name,n,p,d,pa:1-p-d,score:100*(p-d),lo:Math.max(-100,100*(p-d-1.96*se)),hi:Math.min(100,100*(p-d+1.96*se))}; }
 function reliability(items){ if(items.length<2) return null; const M=[]; for(let i=0;i<S.n;i++){ const r=items.map(c=>c.num[i]); if(r.every(x=>x!=null)) M.push(r); } if(M.length<3) return null;
-  const a=ST.alpha(M),tot=M.map(r=>r.reduce((x,y)=>x+y,0)); const rows=items.map((c,j)=>{ const col=M.map(r=>r[j]),rest=tot.map((t,i)=>t-col[i]); return {name:c.name,mean:ST.mean(col),sd:ST.sd(col),rit:ST.pearson(col,rest).r,del:items.length>2?ST.alpha(M.map(r=>r.filter((_,k)=>k!==j))):NaN}; });
+  const a=ST.alpha(M); if(!isFinite(a)) return null; const tot=M.map(r=>r.reduce((x,y)=>x+y,0)); const rows=items.map((c,j)=>{ const col=M.map(r=>r[j]),rest=tot.map((t,i)=>t-col[i]); return {name:c.name,mean:ST.mean(col),sd:ST.sd(col),rit:ST.pearson(col,rest).r,del:items.length>2?ST.alpha(M.map(r=>r.filter((_,k)=>k!==j))):NaN}; });
   return {alpha:a,n:M.length,k:items.length,rows}; }
 const alphaLabel=a=>a>=.9?'ممتاز':a>=.8?'جيد':a>=.7?'مقبول':a>=.6?'مشكوك فيه':'ضعيف';
 function groups(a,b,minN){ const m=new Map(); for(let i=0;i<S.n;i++){ const g=a.raw[i],v=b.num[i]; if(g===''||v==null) continue; if(!m.has(g)) m.set(g,[]); m.get(g).push(v); } return [...m].filter(([,x])=>x.length>=minN); }
 function testPair(a,b,minN=2){
   const isN=c=>!!c.num, isC=c=>c.type==='categorical'; if(isN(a)&&isC(b)) [a,b]=[b,a];
   if(isC(a)&&isC(b)){ const ra=[...new Set(a.raw.filter(v=>v!==''))],rb=[...new Set(b.raw.filter(v=>v!==''))]; let tab=ra.map(()=>rb.map(()=>0)); for(let i=0;i<S.n;i++){ const x=ra.indexOf(a.raw[i]),y=rb.indexOf(b.raw[i]); if(x>=0&&y>=0) tab[x][y]++; }
-    const keepR=ra.map((_,i)=>tab[i].reduce((s,v)=>s+v,0)>=minN), keepC=rb.map((_,j)=>tab.reduce((s,r)=>s+r[j],0)>=minN); const R=ra.filter((_,i)=>keepR[i]),C=rb.filter((_,j)=>keepC[j]); tab=tab.filter((_,i)=>keepR[i]).map(r=>r.filter((_,j)=>keepC[j])); if(R.length<2||C.length<2) return null;
+    let R=ra.slice(),C=rb.slice(),ch=true; while(ch&&tab.length){ ch=false; const kr=tab.map(r=>r.reduce((s,v)=>s+v,0)>=minN); if(kr.includes(false)){ tab=tab.filter((_,i)=>kr[i]); R=R.filter((_,i)=>kr[i]); ch=true; } if(!tab.length) break; const kc=tab[0].map((_,j)=>tab.reduce((s,r)=>s+r[j],0)>=minN); if(kc.includes(false)){ tab=tab.map(r=>r.filter((_,j)=>kc[j])); C=C.filter((_,j)=>kc[j]); ch=true; } } if(R.length<2||C.length<2) return null;
     const r=ST.chi2(tab); return {test:'مربع كاي للاستقلال',line:`χ²(${r.df}) = ${f(r.x)}, ${pstr(r.p)}, V = ${f(r.v)}`,p:r.p,es:r.v,esName:"V كرامر",esL:esLabel(r.v,[.1,.3,.5]),n:r.N,warn:r.lowShare>.2?`${pc(r.lowShare,0)} من الخلايا تكرارها المتوقع أقل من 5، فالنتيجة تقريبية. ادمج الفئات الصغيرة.`:'',detail:{kind:'xtab',R,C,tab}}; }
   if(isC(a)&&isN(b)){ const gs=groups(a,b,minN); if(gs.length<2) return null; const arr=gs.map(g=>g[1]),N=arr.flat().length,ord=b.type!=='numeric'; let o;
-    if(ord){ const r=ST.kw(arr); o={test:gs.length===2?'مان–ويتني (عبر كروسكال–واليس)':'كروسكال–واليس',line:`H(${r.df}) = ${f(r.H)}, ${pstr(r.p)}, ε² = ${f(r.eps2,3)}`,p:r.p,es:r.eps2,esName:'ε²',esL:esLabel(r.eps2,[.01,.06,.14]),warn:''}; }
-    else if(gs.length===2){ const r=ST.welch(arr[0],arr[1]); o={test:'اختبار ت لويلش',line:`t(${f(r.df,1)}) = ${f(r.t)}, ${pstr(r.p)}, d = ${f(r.d)}`,p:r.p,es:r.d,esName:'d كوهين',esL:esLabel(r.d,[.2,.5,.8]),warn:''}; }
+    if(ord){ const r=ST.kw(arr); o={test:gs.length===2?'مان–ويتني (عبر كروسكال–واليس)':'كروسكال–واليس',line:`H(${r.df}) = ${f(r.H)}, ${pstr(r.p)}, ε² = ${f(r.eps2,3)}`,p:r.p,es:r.eps2,esName:'ε²',esL:esLabel(r.eps2,[.01,.06,.14]),warn:arr.some(g=>g.length<5)?'إحدى المجموعات أقل من 5 مشاهدات، وتقريب مربع كاي لقيمة p غير موثوق عند هذا الحجم.':''}; }
+    else if(gs.length===2){ const r=ST.welch(arr[0],arr[1]); o={test:'اختبار ت لويلش',line:`t(${f(r.df,1)}) = ${f(r.t)}, ${pstr(r.p)}, d = ${f(r.d)}`,p:r.p,es:r.d,esName:'d كوهين',esL:esLabel(r.d,[.2,.5,.8]),warn:r.degenerate?'لا تباين داخل المجموعتين، فالنتيجة حدّية.':''}; }
     else{ const r=ST.anova(arr); o={test:'تحليل التباين الأحادي',line:`F(${r.df1}, ${r.df2}) = ${f(r.F)}, ${pstr(r.p)}, η² = ${f(r.eta2,3)}`,p:r.p,es:r.eta2,esName:'η²',esL:esLabel(r.eta2,[.01,.06,.14]),warn:'يفترض تجانس التباين بين المجموعات. تحقق منه قبل الاعتماد على النتيجة.'}; }
     return {...o,n:N,detail:{kind:'groups',rows:gs.map(([g,x])=>({g,n:x.length,mean:ST.mean(x),sd:ST.sd(x),median:ST.q([...x].sort((p,q)=>p-q),.5)}))}}; }
   if(isN(a)&&isN(b)){ const x=[],y=[]; for(let i=0;i<S.n;i++) if(a.num[i]!=null&&b.num[i]!=null){ x.push(a.num[i]); y.push(b.num[i]); } if(x.length<4) return null; const sp=ST.spearman(x,y),pe=ST.pearson(x,y),ord=a.type!=='numeric'||b.type!=='numeric',r=ord?sp:pe;
-    return {test:ord?'ارتباط سبيرمان':'ارتباط بيرسون',line:ord?`ρ = ${f(sp.r)}, ${pstr(sp.p)}, n = ${x.length}`:`r = ${f(pe.r)}, ${pstr(pe.p)}, n = ${x.length} · ρ = ${f(sp.r)}`,p:r.p,es:r.r,esName:ord?'ρ':'r',esL:esLabel(r.r,[.1,.3,.5]),n:x.length,warn:'',detail:null}; }
+    return {test:ord?'ارتباط سبيرمان':'ارتباط بيرسون',line:ord?`ρ = ${f(sp.r)}, ${pstr(sp.p)}, n = ${x.length}`:`r = ${f(pe.r)}, ${pstr(pe.p)}, n = ${x.length} · ρ = ${f(sp.r)}`,p:r.p,es:r.r,esName:ord?'ρ':'r',esL:esLabel(r.r,[.1,.3,.5]),n:x.length,warn:x.length<10?'قيمة p تقريبية عند n أقل من 10.':'',detail:null}; }
   return null; }
 function compliance(){ const pii=byType('pii').map(c=>({name:c.name,kind:c.pii||'محدَّد يدوياً',n:c.raw.filter(v=>v!=='').length}));
-  const tp=A.texts.map(c=>({name:c.name,n:c.raw.filter(v=>v!==''&&textPII(v)).length})).filter(x=>x.n);
+  const tp=A.texts.concat(A.cats).map(c=>({name:c.name,n:c.raw.filter(v=>v!==''&&textPII(v)).length})).filter(x=>x.n);
   const qi=A.cats.filter(c=>S.qi.has(c.name)); let kan=null; if(qi.length){ const m=new Map(); for(let i=0;i<S.n;i++){ const k=qi.map(c=>c.raw[i]).join('\u0001'); m.set(k,(m.get(k)||0)+1); } const sizes=[...m.values()]; kan={classes:sizes.length,min:Math.min(...sizes),risk:sizes.filter(s=>s<5).reduce((a,b)=>a+b,0),uniq:sizes.filter(s=>s===1).length}; }
   const small=[]; A.cats.forEach(c=>{ const m=new Map(); c.raw.forEach(v=>{ if(v!=='') m.set(v,(m.get(v)||0)+1); }); m.forEach((n,v)=>{ if(n<5) small.push({col:c.name,v,n}); }); });
   const q=A.q, a=A.rel?A.rel.alpha:null, auto=[
@@ -292,7 +313,7 @@ function compliance(){ const pii=byType('pii').map(c=>({name:c.name,kind:c.pii||
     {t:'الخلايا الصغيرة في الجداول',s:small.length?'warn':'ok',d:small.length?`${small.length} فئة عددها أقل من 5. ادمجها أو احجبها عند النشر.`:'كل الفئات 5 فأكثر.'}];
   const app=auto.filter(x=>x.s!=='na'),man=MANUAL.filter(m=>S.checks[m.id]).length;
   return {pii,tp,kan,small,auto,pass:app.filter(x=>x.s==='ok').length+man,total:app.length+MANUAL.length}; }
-const moe=(n,N)=>{ let m=1.96*Math.sqrt(.25/n); if(N&&N>n) m*=Math.sqrt((N-n)/(N-1)); return m; };
+const moe=(n,N)=>{ let m=1.96*Math.sqrt(.25/n); if(N&&N>=n&&N>1) m*=Math.sqrt((N-n)/(N-1)); return m; };
 const MANUAL=[
  {id:'consent',t:'وُثّقت موافقة المشاركين قبل جمع البيانات',r:'GDPR م.6 و7 · نظام حماية البيانات الشخصية: الموافقة'},
  {id:'notice',t:'أُبلغ المشاركون بغرض الجمع ومن سيطّلع على البيانات',r:'GDPR م.13 · نظام حماية البيانات الشخصية: الإشعار'},
@@ -352,9 +373,9 @@ const P={
     <textarea id="paste" rows="3" placeholder="الصق هنا بيانات منسوخة من Excel أو Google Sheets" style="width:100%"></textarea>
     <div class="row"><button id="btnPaste">حلّل النص الملصوق</button><span class="muted small">يُحلَّل الملف داخل متصفحك ولا يُرفع إلى أي خادم.</span></div></div></div>
   <div class="sheet"><header><h2>المتغيرات</h2><span class="muted small">${S.cols.length} عمود · ${S.n} صف · ${esc(S.name)}</span></header>
-   <p class="muted small">راجع النوع المكتشف آلياً. المتغير الفئوي المرمّز بأرقام (مثل 1 = ذكر) يُكتشف مقياساً، فغيّره يدوياً.</p>
+   <p class="muted small">راجع النوع المكتشف آلياً قبل قراءة النتائج. عدد نقاط المقياس الرقمي يؤخذ من أعلى قيمة مرصودة في بنود المقياس. يُقرأ صف عناوين واحد فقط، وأسئلة الاختيار المتعدد لا تُفصل.</p>
    <div class="scroll"><table><thead><tr><th>العمود</th><th>النوع</th><th class="n">مُجاب</th><th class="n">مفقود</th><th class="n">قيم مختلفة</th><th>عيّنة</th></tr></thead><tbody>
-   ${S.cols.map((c,i)=>{ const v=c.raw.filter(x=>x!==''); return `<tr><td>${esc(c.name)}</td><td><select id="type-${i}" data-col="${i}" aria-label="نوع ${esc(c.name)}">${Object.entries(TYPES).map(([k,l])=>`<option value="${k}"${c.type===k?' selected':''}>${l}</option>`).join('')}</select></td><td class="n">${v.length}</td><td class="n">${S.n-v.length}</td><td class="n">${new Set(v).size}</td><td class="muted small">${c.type==='pii'?'محجوب ('+esc(c.pii||'شخصي')+')':esc([...new Set(v)].slice(0,3).join(' · ').slice(0,60))}</td></tr>`; }).join('')}</tbody></table></div></div>`; },
+   ${S.cols.map((c,i)=>{ const v=c.raw.filter(x=>x!==''); return `<tr><td>${esc(c.name)}${c.unmapped?`<br><span class="pill warn">${c.unmapped} قيمة غير مفهومة عُدّت مفقودة</span>`:''}</td><td><select id="type-${i}" data-col="${i}" aria-label="نوع ${esc(c.name)}">${Object.entries(TYPES).map(([k,l])=>`<option value="${k}"${c.type===k?' selected':''}>${l}</option>`).join('')}</select></td><td class="n">${v.length}</td><td class="n">${S.n-v.length}</td><td class="n">${new Set(v).size}</td><td class="muted small">${c.type==='pii'?'محجوب ('+esc(c.pii||'شخصي')+')':esc([...new Set(v)].slice(0,3).join(' · ').slice(0,60))}</td></tr>`; }).join('')}</tbody></table></div></div>`; },
  qual(){ const q=A.q,cl=A.use.filter(c=>c.type!=='text').map(c=>[c.name,c.raw.filter(v=>v==='').length]).filter(x=>x[1]).sort((a,b)=>b[1]-a[1]).slice(0,12); return `
   <div class="tiles">
    <div class="tile"><span class="k">خلايا مفقودة</span><span class="v">${pc(q.missRate)}</span><span class="s">${q.miss} من ${q.cells}</span></div>
@@ -372,7 +393,7 @@ const P={
   const nums=byType('numeric').map(c=>{ const xs=vals(c); if(xs.length<2) return ''; const d=ST.desc(xs); return `<div class="sheet"><header><h3>${esc(c.name)}</h3><span class="muted small num">n = ${d.n}</span></header>${hist(xs)}<p><span class="stat">M = ${f(d.mean)}, SD = ${f(d.sd)}, Mdn = ${f(d.median)}, IQR = ${f(d.q1)}–${f(d.q3)}</span></p><p class="small muted">فترة الثقة 95% للمتوسط: <span class="num">${f(d.lo)} – ${f(d.hi)}</span> · الالتواء <span class="num">${f(d.skew)}</span></p></div>`; });
   const txt=A.texts.map(c=>{ const w=words(c),n=c.raw.filter(v=>v!=='').length; return `<div class="sheet"><header><h3>${esc(c.name)}</h3><span class="muted small num">n = ${n}</span></header>${w.length?barList(w,n):'<p class="muted">لا توجد إجابات.</p>'}<p class="muted small">أكثر الكلمات تكراراً بحسب عدد الإجابات التي وردت فيها. هذا عدّ كلمات وليس تحليل مشاعر.</p></div>`; });
   return blocks.join('')+`<div class="grid2">${cats.join('')}${nums.join('')}${txt.join('')}</div>`; },
- rel(){ const opt=A.use.filter(c=>c.type!=='text').map(c=>`<option>${esc(c.name)}</option>`).join(''), hv=A.outs.filter(c=>c!==A.q.dur).slice(0,12); let heat='';
+ rel(){ const opt=A.use.filter(c=>c.type!=='text').map(c=>`<option value="${S.cols.indexOf(c)}">${esc(c.name)}</option>`).join(''), hv=A.outs.filter(c=>c!==A.q.dur).slice(0,12); let heat='';
   if(hv.length>=3){ heat=`<div class="sheet"><header><h2>مصفوفة الارتباط</h2><span class="muted small">سبيرمان ρ، حذف زوجي</span></header><div class="scroll"><table class="heat"><thead><tr><th></th>${hv.map((_,i)=>`<th class="n">${i+1}</th>`).join('')}</tr></thead><tbody>${hv.map((a,i)=>`<tr><th style="text-align:start">${i+1}. ${esc(a.name)}</th>${hv.map((b,j)=>{ if(i===j) return '<td class="n muted">—</td>'; const x=[],y=[]; for(let k=0;k<S.n;k++) if(a.num[k]!=null&&b.num[k]!=null){ x.push(a.num[k]); y.push(b.num[k]); } const r=x.length>3?ST.spearman(x,y).r:NaN; return `<td class="n" style="background:color-mix(in srgb,var(${r<0?'--neg3':'--s1'}) ${Math.round(Math.abs(r||0)*70)}%,var(--surface))" data-tip="${esc(a.name)} × ${esc(b.name)}: ρ = ${f(r)}, n = ${x.length}">${f(r).replace(/0\./,'.')}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div></div>`; }
   return `<div class="sheet"><h2>اختبر علاقة بين متغيرين</h2><p class="muted small">يختار مستبين الاختبار بحسب نوعي المتغيرين: مربع كاي للفئوي × فئوي، كروسكال–واليس للمقياس الترتيبي بين مجموعات، اختبار ت لويلش أو تحليل التباين للرقمي، وسبيرمان أو بيرسون للارتباط.</p>
    <div class="row"><select id="va" aria-label="المتغير الأول">${opt}</select><span>×</span><select id="vb" aria-label="المتغير الثاني">${opt}</select><button class="primary" id="btnTest">اختبر</button></div><div id="testOut"></div></div>
@@ -387,10 +408,10 @@ const P={
   <div class="sheet"><header><h2>جاهزية الامتثال</h2><b>${c.pass} من ${c.total}</b></header><div class="meter"><div style="width:${100*c.pass/c.total}%"></div></div>
    <p class="muted small">قائمة استرشادية تساعدك على تجهيز الملف والتقرير. ليست شهادة امتثال ولا رأياً قانونياً، ولا تغني عن مراجعة مسؤول حماية البيانات.</p></div>
   <div class="sheet"><h2>فحوص آلية على الملف</h2><div class="scroll"><table><tbody>${c.auto.map(x=>`<tr><td style="white-space:nowrap">${pill(x.s)}</td><td><b>${x.t}</b><br><span class="small">${esc(x.d)}</span></td></tr>`).join('')}</tbody></table></div>
-   <div class="row"><button class="primary" id="btnAnon">نزّل نسخة مجهولة الهوية (CSV)</button><span class="muted small">تُحذف أعمدة البيانات الشخصية والمعرّفات، وتُطمس العناوين والأرقام داخل النصوص.</span></div></div>
+   <div class="row"><button class="primary" id="btnAnon">نزّل نسخة بلا معرّفات مباشرة (CSV)</button><span class="muted small">تُحذف الأعمدة المصنّفة بيانات شخصية أو معرّفات، ويُطمس ما يطابق أنماط البريد والهاتف والهوية داخل الخلايا. الأسماء داخل النصوص والمعرّفات شبه المباشرة تبقى، فراجع الملف قبل مشاركته.</span></div></div>
   <div class="sheet"><h2>المعرّفات شبه المباشرة</h2><p class="muted small">اختر المتغيرات التي قد تكشف هوية شخص إذا اجتمعت (كالإدارة والعمر والجنس). نحسب أصغر مجموعة يشترك أفرادها في القيم نفسها.</p>
    <div class="row">${A.cats.map((x,i)=>`<label class="pill" style="cursor:pointer"><input type="checkbox" id="qi-${i}" data-qi="${esc(x.name)}"${S.qi.has(x.name)?' checked':''}> ${esc(x.name)}</label>`).join('')||'<span class="muted">لا توجد متغيرات فئوية.</span>'}</div>
-   ${c.kan?`<p><span class="stat">k = ${c.kan.min} · ${c.kan.classes} مجموعة · ${c.kan.risk} سجل دون 5 · ${c.kan.uniq} فريد</span></p>`:''}
+   ${c.kan?`<p><span class="stat">k = ${c.kan.min}</span> · ${c.kan.classes} مجموعة · ${c.kan.risk} سجل دون 5 · ${c.kan.uniq} فريد</p>`:''}
    ${c.small.length?`<div class="scroll"><table><thead><tr><th>المتغير</th><th>الفئة</th><th class="n">العدد</th></tr></thead><tbody>${c.small.slice(0,12).map(s=>`<tr><td>${esc(s.col)}</td><td>${esc(s.v)}</td><td class="n">${s.n}</td></tr>`).join('')}</tbody></table></div>`:''}</div>
   <div class="sheet"><h2>ضوابط تنظيمية تؤكدها أنت</h2><div>${MANUAL.map(m=>`<label class="check"><input type="checkbox" id="mc-${m.id}" data-check="${m.id}"${S.checks[m.id]?' checked':''}><span>${m.t}</span><small>${m.r}</small></label>`).join('')}</div></div>`; },
  rep(){ return `<div class="sheet noprint"><h2>إعداد التقرير</h2><div class="row"><label for="title">عنوان الاستبانة</label><input type="text" id="title" value="${esc(S.title)}" style="flex:1;min-width:200px"></div>
@@ -405,7 +426,7 @@ function report(){ const c=A.comp,q=A.q,sig=A.scan.filter(r=>r.padj<.05),prob=S.
    <tr><th>عدد الاستجابات</th><td class="num">${S.n}</td></tr><tr><th>حجم المجتمع</th><td>${S.pop?'<span class="num">'+S.pop+'</span>':'غير محدد'}</td></tr>
    <tr><th>نوع العينة</th><td>${prob?'احتمالية (بتأكيد معدّ التقرير)':'غير مؤكد أنها احتمالية'}</td></tr>
    <tr><th>هامش الخطأ عند 95%</th><td><span class="num">±${f(100*moe(S.n,S.pop),1)}%</span> لنسبة 50%${prob?'':' (استرشادي)'}</td></tr>
-   <tr><th>المفقود</th><td><span class="num">${pc(q.missRate)}</span> من خلايا الأسئلة المغلقة، عولج بالحذف الزوجي</td></tr>
+   <tr><th>المفقود</th><td><span class="num">${pc(q.missRate)}</span> من خلايا الأسئلة المغلقة، عولج بالحذف الزوجي (ألفا كرونباخ على الحالات المكتملة فقط)</td></tr>
    <tr><th>الترجيح</th><td>لا يوجد</td></tr>
    <tr><th>الأساليب الإحصائية</th><td>تكرارات ونسب، متوسطات وفترات ثقة، ألفا كرونباخ، مربع كاي، كروسكال–واليس، اختبار ت لويلش، تحليل التباين الأحادي، ارتباط سبيرمان. مستوى الدلالة 5% بعد تصحيح بنجاميني–هوكبرغ.</td></tr></tbody></table></div></section>
   ${A.scales.length?`<section><h2>نتائج بنود المقياس</h2>${likert(A.scales)}</section>`:''}
@@ -417,11 +438,16 @@ function report(){ const c=A.comp,q=A.q,sig=A.scan.filter(r=>r.padj<.05),prob=S.
   <section><h2>حدود التحليل</h2><ul class="clean">${lim.map(l=>`<li>${l}</li>`).join('')}</ul></section>`; }
 
 /* ============ rendering & events ============ */
-function render(){ $('#banner').hidden=!S.sample; if(S.sample) $('#banner').textContent='تعرض الصفحة الآن بيانات تجريبية مولّدة آلياً (242 استجابة افتراضية). حمّل ملفك لتحليل بياناتك.';
-  $('#tabs').innerHTML=TABS.map(([k,l])=>`<button role="tab" id="tab-${k}" data-tab="${k}" aria-selected="${k===cur}">${l}</button>`).join('');
-  $('#panels').innerHTML=TABS.map(([k])=>`<section class="panel" id="p-${k}"${k===cur?'':' hidden'}>${P[k]()}</section>`).join(''); }
-function runTest(){ const a=S.cols.find(c=>c.name===$('#va').value),b=S.cols.find(c=>c.name===$('#vb').value),o=$('#testOut'); if(!a||!b||a===b){ o.innerHTML='<p class="muted">اختر متغيرين مختلفين.</p>'; return; }
-  const t=testPair(a,b); if(!t){ o.innerHTML='<p class="muted">لا يمكن اختبار هذا الزوج: نحتاج مجموعتين على الأقل في كل منهما مشاهدتان.</p>'; return; }
+function showTab(){ TABS.forEach(([k])=>{ const p=$('#p-'+k),t=$('#tab-'+k); if(p) p.hidden=k!==cur; if(t){ t.setAttribute('aria-selected',k===cur); t.tabIndex=k===cur?0:-1; } }); }
+function render(){ const act=document.activeElement&&document.activeElement.id, paste=$('#paste')?$('#paste').value:'', hadTest=$('#testOut')&&$('#testOut').innerHTML!=='';
+  $('#banner').hidden=!S.sample; if(S.sample) $('#banner').textContent='تعرض الصفحة الآن بيانات تجريبية مولّدة آلياً (242 استجابة افتراضية). حمّل ملفك لتحليل بياناتك.';
+  $('#tabs').innerHTML=TABS.map(([k,l])=>`<button role="tab" id="tab-${k}" data-tab="${k}" aria-controls="p-${k}" aria-selected="${k===cur}">${l}</button>`).join('');
+  $('#panels').innerHTML=TABS.map(([k])=>`<section class="panel" role="tabpanel" aria-labelledby="tab-${k}" id="p-${k}"${k===cur?'':' hidden'}>${P[k]()}</section>`).join('');
+  showTab(); if($('#paste')) $('#paste').value=paste;
+  if(S.pair&&$('#va')&&S.cols[+S.pair[0]]&&S.cols[+S.pair[1]]&&$('#va').querySelector(`option[value="${S.pair[0]}"]`)&&$('#vb').querySelector(`option[value="${S.pair[1]}"]`)){ $('#va').value=S.pair[0]; $('#vb').value=S.pair[1]; if(hadTest) runTest(); }
+  if(act){ const e=document.getElementById(act); if(e) e.focus({preventScroll:true}); } }
+function runTest(){ const a=S.cols[+$('#va').value],b=S.cols[+$('#vb').value],o=$('#testOut'); S.pair=[$('#va').value,$('#vb').value]; if(!a||!b||a===b){ o.innerHTML='<p class="muted">اختر متغيرين مختلفين.</p>'; return; }
+  const t=testPair(a,b); if(t&&(Number.isNaN(t.p)||Number.isNaN(t.es))){ o.innerHTML='<p class="muted">تعذّر حساب الاختبار: أحد المتغيرين أو إحدى المجموعات بلا تباين.</p>'; return; } if(!t){ o.innerHTML='<p class="muted">لا يمكن اختبار هذا الزوج: نحتاج مجموعتين على الأقل في كل منهما مشاهدتان.</p>'; return; }
   let d=''; if(t.detail&&t.detail.kind==='groups') d=`<div class="scroll"><table><thead><tr><th>المجموعة</th><th class="n">n</th><th class="n">المتوسط</th><th class="n">الوسيط</th><th class="n">الانحراف</th></tr></thead><tbody>${t.detail.rows.sort((x,y)=>y.mean-x.mean).map(r=>`<tr><td>${esc(r.g)}</td><td class="n">${r.n}</td><td class="n">${f(r.mean)}</td><td class="n">${f(r.median)}</td><td class="n">${f(r.sd)}</td></tr>`).join('')}</tbody></table></div>`;
   if(t.detail&&t.detail.kind==='xtab'){ const {R,C,tab}=t.detail; d=`<div class="scroll"><table><thead><tr><th>نسب الصف</th>${C.map(x=>`<th class="n">${esc(x)}</th>`).join('')}<th class="n">n</th></tr></thead><tbody>${R.map((r,i)=>{ const s=tab[i].reduce((p,q)=>p+q,0); return `<tr><td>${esc(r)}</td>${tab[i].map(v=>`<td class="n">${pc(v/s,0)}</td>`).join('')}<td class="n">${s}</td></tr>`; }).join('')}</tbody></table></div>`; }
   o.innerHTML=`<p><b>${t.test}</b> · <span class="stat">${t.line}</span></p><p>${t.p<.05?'العلاقة دالة إحصائياً عند 5%':'لا دليل كافياً على وجود علاقة عند 5%'}، وحجم الأثر <b>${t.esL}</b> (${t.esName}). هذا اختبار منفرد غير مصحّح للمقارنات المتعددة.</p>${t.warn?`<p class="small"><span class="pill warn">تنبيه</span> ${t.warn}</p>`:''}${d}`; }
@@ -429,8 +455,8 @@ async function saveFile(filename,data,mime){ let d=null; try{ d=window.claude&&w
   if(d){ try{ await d.save({filename,data}); toast('حُفظ الملف'); }catch(e){ if(!e||e.code!=='declined') toast('تعذّر حفظ الملف في هذا العرض'); } return; }
   if(window.claude){ toast('التنزيل غير متاح في هذا العرض'); return; }
   const a=document.createElement('a'); a.href=URL.createObjectURL(data instanceof Blob?data:new Blob([data],{type:mime})); a.download=filename; document.body.appendChild(a); a.click(); a.remove(); }
-const csvCell=v=>/[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;
-function anonCSV(){ const cols=S.cols.filter(c=>!['pii','id','ignore'].includes(c.type)); return '﻿'+[cols.map(c=>csvCell(c.name)).join(',')].concat(Array.from({length:S.n},(_,i)=>cols.map(c=>csvCell(c.type==='text'?scrub(c.raw[i]):c.raw[i])).join(','))).join('\n'); }
+const csvCell=v=>{ v=String(v??''); if(/^[=+\-@\t\r]/.test(v)&&!/^[+-]?\d+([.,]\d+)?$/.test(v)) v="'"+v; return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+function anonCSV(){ const cols=S.cols.filter(c=>!['pii','id','ignore'].includes(c.type)); return '﻿'+[cols.map(c=>csvCell(c.name)).join(',')].concat(Array.from({length:S.n},(_,i)=>cols.map(c=>csvCell(c.num?c.raw[i]:scrub(c.raw[i]))).join(','))).join('\n'); }
 function workbook(){ const wb=XLSX.utils.book_new(),add=(n,r)=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(r),n);
   add('المتغيرات',[['المتغير','النوع','مُجاب','مفقود','المتوسط','الانحراف المعياري','الوسيط']].concat(A.use.map(c=>{ const v=vals(c),d=c.num&&v.length>1?ST.desc(v):null; return [c.name,TYPES[c.type],v.length,S.n-v.length,d?+d.mean.toFixed(3):'',d?+d.sd.toFixed(3):'',d?d.median:'']; })));
   const fr=[['المتغير','الفئة','العدد','النسبة %']]; A.use.filter(c=>c.type==='categorical'||c.type==='scale').forEach(c=>{ const m=new Map(),L=c.type==='scale'?scaleLabels(c):null; (c.num||c.raw).forEach(v=>{ if(v!==''&&v!=null) m.set(v,(m.get(v)||0)+1); }); const t=[...m.values()].reduce((a,b)=>a+b,0); [...m].sort((a,b)=>c.num?a[0]-b[0]:b[1]-a[1]).forEach(([k,n])=>fr.push([c.name,L?(L[k-c.lo]||k):k,n,+(100*n/t).toFixed(1)])); }); add('التكرارات',fr);
@@ -439,12 +465,15 @@ function workbook(){ const wb=XLSX.utils.book_new(),add=(n,r)=>XLSX.utils.book_a
   add('الامتثال',[['البند','الحالة','التفصيل']].concat(A.comp.auto.map(x=>[x.t,{ok:'مستوفى',warn:'يحتاج مراجعة',bad:'غير مستوفى',na:'لا ينطبق'}[x.s],x.d]),MANUAL.map(m=>[m.t,S.checks[m.id]?'مؤكَّد':'غير مؤكَّد',m.r])));
   wb.Workbook={Views:[{RTL:true}]}; return XLSX.write(wb,{type:'array',bookType:'xlsx'}); }
 document.addEventListener('click',e=>{ const t=e.target.closest('button,[data-tab]'); if(!t) return;
-  if(t.dataset.tab){ cur=t.dataset.tab; render(); return; }
+  if(t.dataset.tab){ cur=t.dataset.tab; showTab(); return; }
   const id=t.id;
-  if(id==='btnSample') sampleData();
-  else if(id==='btnPaste'){ const v=$('#paste').value.trim(); v?loadTable(parseCSV(v),'بيانات ملصوقة'):toast('الصق جدولاً أولاً'); }
+  if(id==='btnSample'){ S.pair=null; sampleData(); }
+  else if(id==='btnFile') $('#file').click();
+  else if(id==='btnPaste'){ const v=$('#paste').value.replace(/^[\r\n]+|\s+$/g,''); if(v){ S.pair=null; $('#paste').value=''; loadTable(parseCSV(v),'بيانات ملصوقة'); } else toast('الصق جدولاً أولاً'); }
   else if(id==='btnTest') runTest();
-  else if(id==='btnComp'){ const items=A.scales.filter(c=>S.rel.has(c.name)),name='مؤشر مركّب ('+items.length+' بنود)'; if(S.cols.some(c=>c.name===name)){ toast('المؤشر مضاف من قبل'); return; } const raw=Array.from({length:S.n},(_,i)=>{ const r=items.map(c=>c.num[i]); return r.every(x=>x!=null)?String(+ST.mean(r).toFixed(3)):''; }); const c=makeCol(name,raw); setType(c,'numeric'); S.cols.push(c); analyze(); toast('أُضيف المؤشر إلى المتغيرات'); }
+  else if(id==='btnComp'){ const items=A.scales.filter(c=>S.rel.has(c.name)),key=items.map(c=>c.name).sort().join('\u0001'); if(items.length<2) return; if(S.cols.some(c=>c.compKey===key)){ toast('هذا المؤشر مضاف من قبل'); return; }
+    let name='مؤشر مركّب ('+items.length+' بنود)',k=1; while(S.cols.some(c=>c.name===name)) name='مؤشر مركّب '+(++k)+' ('+items.length+' بنود)';
+    const raw=Array.from({length:S.n},(_,i)=>{ const r=items.map(c=>c.num[i]); return r.every(x=>x!=null)?String(+ST.mean(r).toFixed(3)):''; }); const c=makeCol(name,raw); setType(c,'numeric'); c.pii=null; c.compKey=key; S.cols.push(c); analyze(); toast('أُضيف المؤشر إلى المتغيرات'); }
   else if(id==='btnAnon') saveFile('mostabeen-anonymized.csv',anonCSV(),'text/csv');
   else if(id==='btnRep') saveFile('mostabeen-report.html','<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(S.title)+'</title><style>'+$('#app-style').textContent+'</style></head><body><div class="wrap" dir="rtl"><div class="paper">'+report()+'</div></div></body></html>','text/html');
   else if(id==='btnXls'){ if(!window.XLSX){ toast('مكتبة Excel لم تُحمَّل'); return; } saveFile('mostabeen-tables.xlsx',new Blob([workbook()]),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); }
@@ -453,17 +482,22 @@ document.addEventListener('click',e=>{ const t=e.target.closest('button,[data-ta
 });
 document.addEventListener('change',e=>{ const t=e.target;
   if(t.id==='file'&&t.files[0]){ readFile(t.files[0]); t.value=''; }
-  else if(t.dataset.col){ const c=S.cols[+t.dataset.col]; setType(c,t.value); if(t.value!=='pii') c.pii=c.pii||null; S.rel=null; S.qi=null; analyze(); }
+  else if(t.dataset.col){ const c=S.cols[+t.dataset.col],old=c.type;
+    if(t.value==='scale'&&!scaleOk(c)){ toast('هذا العمود ليس مقياساً ترتيبياً: نحتاج أعداداً صحيحة من 0 إلى 10 أو تسميات معروفة'); t.value=old; return; }
+    setType(c,t.value); if(t.value!=='pii') c.pii=null; S.pair=null;
+    if(S.rel){ S.rel.delete(c.name); if(t.value==='scale') S.rel.add(c.name); } if(S.qi&&t.value!=='categorical') S.qi.delete(c.name);
+    try{ analyze(); }catch(err){ console.error(err); setType(c,old); analyze(); toast('تعذّر تطبيق هذا النوع على العمود'); } }
   else if(t.dataset.rel){ t.checked?S.rel.add(t.dataset.rel):S.rel.delete(t.dataset.rel); analyze(); }
   else if(t.dataset.qi){ t.checked?S.qi.add(t.dataset.qi):S.qi.delete(t.dataset.qi); analyze(); }
-  else if(t.dataset.check){ S.checks[t.dataset.check]=t.checked; try{ localStorage.setItem('mostabeen.checks',JSON.stringify(S.checks)); }catch(_){} analyze(); }
-  else if(t.id==='pop'){ S.pop=+t.value>0?+t.value:null; analyze(); }
+  else if(t.dataset.check){ S.checks[t.dataset.check]=t.checked; analyze(); }
+  else if(t.id==='pop'){ const v=+t.value; if(v>0&&v<S.n){ toast('حجم المجتمع لا يمكن أن يكون أقل من عدد الاستجابات'); S.pop=null; } else S.pop=v>0?v:null; analyze(); }
   else if(t.id==='title'){ S.title=t.value; $('#paper').innerHTML=report(); }
 });
 document.addEventListener('dragover',e=>{ const d=e.target.closest&&e.target.closest('#drop'); if(d){ e.preventDefault(); d.classList.add('over'); } });
 document.addEventListener('dragleave',e=>{ const d=e.target.closest&&e.target.closest('#drop'); if(d) d.classList.remove('over'); });
 document.addEventListener('drop',e=>{ const d=e.target.closest&&e.target.closest('#drop'); if(d){ e.preventDefault(); d.classList.remove('over'); if(e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); } });
 const tip=$('#tip'); document.addEventListener('mousemove',e=>{ const t=e.target.closest&&e.target.closest('[data-tip]'); if(!t){ tip.hidden=true; return; } tip.textContent=t.dataset.tip; tip.hidden=false; const w=tip.offsetWidth; tip.style.left=Math.max(6,Math.min(innerWidth-w-6,e.clientX-w/2))+'px'; tip.style.top=(e.clientY+16)+'px'; });
+document.addEventListener('keydown',e=>{ const t=e.target.closest&&e.target.closest('[role=tab]'); if(!t||(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')) return; const i=TABS.findIndex(x=>x[0]===cur),j=(i+(e.key==='ArrowLeft'?1:-1)+TABS.length)%TABS.length; cur=TABS[j][0]; showTab(); $('#tab-'+cur).focus(); e.preventDefault(); });
 sampleData();
 </script>
 </body></html>
