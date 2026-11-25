@@ -133,6 +133,7 @@ const latin=s=>s.replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replac
 function toNum(v){ if(v==null) return null; let s=latin(String(v).trim()).replace(/^\u2212/,'-').replace(/^\+/,'').replace(/\s?[%٪]$/,'');
   if(/^-?\d{1,3}([,٬]\d{3})+(\.\d+)?$/.test(s)) s=s.replace(/[,٬]/g,''); else if(/^-?\d+,\d+$/.test(s)) s=s.replace(',','.');
   if(!/^-?\d+(\.\d+)?$/.test(s)) return null; return +s; }
+const amin=a=>{ let m=Infinity; for(const x of a) if(x<m) m=x; return m; }, amax=a=>{ let m=-Infinity; for(const x of a) if(x>m) m=x; return m; };
 function toast(m){ const t=$('#toast'); t.textContent=m; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,2600); }
 
 /* ============ statistics engine ============ */
@@ -203,7 +204,7 @@ function autoType(c){ const all=c.raw.filter(v=>v!==''); c.pii=piiKind(c.name,al
   const [best,bs]=bestFam(vals);
   if(bs>=.9&&dist>=2){ c.fam=best; return setType(c,'scale'); }
   const nums=vals.map(toNum).filter(x=>x!=null);
-  if(nums.length&&nums.length/n>=.95){ const ints=nums.every(Number.isInteger),mn=Math.min(...nums),mx=Math.max(...nums),nd=new Set(nums).size,uniq=nd===nums.length;
+  if(nums.length&&nums.length/n>=.95){ const ints=nums.every(Number.isInteger),mn=amin(nums),mx=amax(nums),nd=new Set(nums).size,uniq=nd===nums.length;
     const seq=uniq&&ints&&nums.length>=10&&mx-mn===nums.length-1;                                // 1,2,3… row counters
     if(/^(id|#|م|رقم|رقم الاستجابة|رقم المستجيب|respondent ?id|response ?id)$/i.test(c.name.trim())||seq||(uniq&&(/(^|[^a-z])id($|[^a-z])|معرف|معرّف|رقم\s+(ال)?(موظف|طالب|ملف|عضوية|وظيفي|جامعي|مستجيب|استجابة)|الرقم\s+(الوظيفي|الجامعي)/i.test(c.name)||/[a-z]ID$/.test(c.name)))) return setType(c,'id');
     if(ints&&mn>=0&&mx<=10&&((mn===0&&mx===10)||(mx>7&&NPS_RX.test(c.name)))) return setType(c,'nps');
@@ -220,9 +221,9 @@ function setType(c,t){ c.type=t; c.num=null; c.unmapped=0;
   if(t==='scale'||t==='numeric'||t==='nps'){ const fam=t==='scale'?c.fam:null;
     c.num=c.raw.map(v=>{ if(v==='') return null; const x=(fam&&fam.map[AR_NORM(v)])||toNum(v); if(x==null&&!NA_TOKENS.has(v)) c.unmapped++; return x; });
     const xs=c.num.filter(x=>x!=null);
-    if(t==='scale'){ const mx=xs.length?Math.max(...xs):5,mn=xs.length?Math.min(...xs):1; c.lo=fam?1:(mn<1?0:1); c.obs=Math.ceil(mx); c.hi=fam?5:Math.max(c.obs,c.lo+1); } } }
+    if(t==='scale'){ const mx=xs.length?amax(xs):5,mn=xs.length?amin(xs):1; c.lo=fam?1:(mn<1?0:1); c.obs=Math.ceil(mx); c.hi=fam?5:Math.max(c.obs,c.lo+1); } } }
 // Can this column be shown as an ordinal scale? Integers only, at most 11 points.
-function scaleOk(c){ const vs=c.raw.filter(v=>v!==''&&!NA_TOKENS.has(v)); if(bestFam(vs)[1]>=.5) return true; const xs=vs.map(toNum).filter(x=>x!=null); return xs.length>0&&xs.every(Number.isInteger)&&Math.min(...xs)>=0&&Math.max(...xs)<=10; }
+function scaleOk(c){ const vs=c.raw.filter(v=>v!==''&&!NA_TOKENS.has(v)); if(bestFam(vs)[1]>=.5) return true; const xs=vs.map(toNum).filter(x=>x!=null); return xs.length>0&&xs.every(Number.isInteger)&&amin(xs)>=0&&amax(xs)<=10; }
 const vals=c=>c.num?c.num.filter(x=>x!=null):c.raw.filter(v=>v!=='');
 const byType=(...t)=>S.cols.filter(c=>t.includes(c.type));
 function loadTable(rows,name,sample,keep){ MODS.forEach(m=>{ const r=modCall(m,'preprocess',rows,name); if(Array.isArray(r)) rows=r; }); rows=rows.filter(r=>r&&r.some(v=>v!=null&&String(v).trim()!=='')); if(rows.length<3){ toast('الملف لا يحتوي صفوفاً كافية: نحتاج صف عناوين وصفّي بيانات على الأقل'); return; }
@@ -242,9 +243,9 @@ function readFile(file){ const ext=(file.name.match(/\.([^.]+)$/)||['',''])[1].t
     if(ext==='docx'||ext==='pdf'){ busy('جارٍ قراءة المستند…'); let d; try{ d=await (ext==='pdf'?readPdf(new Uint8Array(r.result),file.name):readDocx(r.result,file.name)); }catch(e){ console.error(e); render(); toast(e&&e.message==='lib'?'تعذّر تحميل مكتبة القراءة. تحقق من الاتصال بالإنترنت':e&&e.name==='PasswordException'?'الملف محمي بكلمة مرور':'تعذّرت قراءة المستند. قد يكون تالفاً'); return; }
       if(!d.blocks.length&&!d.tables.length&&!(d.pages)){ render(); toast('المستند فارغ'); return; } loadDoc(d); }
     else if(bin){ if(!window.XLSX){ toast('مكتبة Excel لم تُحمَّل. احفظ الملف بصيغة CSV وأعد المحاولة'); return; } const wb=XLSX.read(r.result,{type:'array'}),sheets={}; wb.SheetNames.forEach(n=>{ const rows=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:'',raw:false}).filter(x=>x.some(v=>String(v).trim()!=='')); if(rows.length>=3) sheets[n]=rows; });
-      const names=Object.keys(sheets); if(!names.length){ toast('لا ورقة في الملف فيها صف عناوين وصفّا بيانات على الأقل'); return; } S.book={name:file.name,sheets,cur:names[0]}; loadTable(tableFrom(sheets[names[0]]),file.name,false,true); }
+      const names=Object.keys(sheets); if(!names.length){ toast('لا ورقة في الملف فيها صف عناوين وصفّا بيانات على الأقل'); return; } S.book={name:file.name,sheets,cur:names[0]}; busy('جارٍ تحليل الجدول…'); await new Promise(z=>setTimeout(z,30)); loadTable(tableFrom(sheets[names[0]]),file.name,false,true); }
     else{ const text=r.result,first=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(l=>l.trim()).slice(0,6),dl=['\t',';',','].map(d=>first.map(l=>l.split(d).length)).find(c=>c.length>=2&&c[0]>1&&c.every(x=>x===c[0]));
-      if(ext==='csv'||ext==='tsv'||dl) loadTable(tableFrom(parseCSV(text)),file.name); else loadDoc(readText(text,file.name)); }
+      if(ext==='csv'||ext==='tsv'||dl){ if(text.length>2e6){ busy('جارٍ تحليل الجدول…'); await new Promise(z=>setTimeout(z,30)); } loadTable(tableFrom(parseCSV(text)),file.name); } else loadDoc(readText(text,file.name)); }
   }catch(e){ console.error(e); render(); toast('صيغة الملف غير مفهومة'); } };
   bin?r.readAsArrayBuffer(file):r.readAsText(file); }
 // Skip title rows above the real header: the header is the first of the top 15 rows that is wide and mostly non-numeric.
@@ -311,7 +312,7 @@ function testPair(a,b,minN=2){
   return null; }
 function compliance(){ const pii=byType('pii').map(c=>({name:c.name,kind:c.pii||'محدَّد يدوياً',n:c.raw.filter(v=>v!=='').length}));
   const tp=A.texts.concat(A.cats).map(c=>({name:c.name,n:c.raw.filter(v=>v!==''&&textPII(v)).length})).filter(x=>x.n);
-  const qi=A.cats.filter(c=>S.qi.has(c.name)); let kan=null; if(qi.length){ const m=new Map(); for(let i=0;i<S.n;i++){ const k=qi.map(c=>c.raw[i]).join('\u0001'); m.set(k,(m.get(k)||0)+1); } const sizes=[...m.values()]; kan={classes:sizes.length,min:Math.min(...sizes),risk:sizes.filter(s=>s<5).reduce((a,b)=>a+b,0),uniq:sizes.filter(s=>s===1).length}; }
+  const qi=A.cats.filter(c=>S.qi.has(c.name)); let kan=null; if(qi.length){ const m=new Map(); for(let i=0;i<S.n;i++){ const k=qi.map(c=>c.raw[i]).join('\u0001'); m.set(k,(m.get(k)||0)+1); } const sizes=[...m.values()]; kan={classes:sizes.length,min:amin(sizes),risk:sizes.filter(s=>s<5).reduce((a,b)=>a+b,0),uniq:sizes.filter(s=>s===1).length}; }
   const small=[]; A.cats.forEach(c=>{ const m=new Map(); c.raw.forEach(v=>{ if(v!=='') m.set(v,(m.get(v)||0)+1); }); m.forEach((n,v)=>{ if(n<5) small.push({col:c.name,v,n}); }); });
   const q=A.q, a=A.rel?A.rel.alpha:null, auto=[
     {t:'حجم العينة',s:S.n>=100?'ok':S.n>=30?'warn':'bad',d:`${S.n} استجابة. هامش الخطأ التقريبي ±${f(100*moe(S.n,S.pop),1)}% عند ثقة 95%.`},
@@ -351,7 +352,7 @@ function likert(items){ if(!items.length) return '<p class="muted">لا توجد
 function npsBlock(n){ return `<div class="lstack" style="height:26px">${[['المنتقدون (0–6)',n.d,'var(--neg3)','w'],['المحايدون (7–8)',n.pa,'var(--mid)','m'],['المروّجون (9–10)',n.p,'var(--pos3)','w']].map(([l,p,bg,cl])=>p>0?`<div class="seg ${cl}" style="flex:${p} 0 0;background:${bg}" data-tip="${l}: ${pc(p)}">${Math.round(100*p)}%</div>`:'').join('')}</div>
   <div class="legend"><span><i style="background:var(--neg3)"></i>المنتقدون (0–6)</span><span><i style="background:var(--mid)"></i>المحايدون (7–8)</span><span><i style="background:var(--pos3)"></i>المروّجون (9–10)</span></div>
   <p>صافي نقاط الترويج <span class="stat">NPS = ${f(n.score,0)}, 95% CI [${f(n.lo,0)}, ${f(n.hi,0)}], n = ${n.n}</span></p>`; }
-function hist(xs){ const mn=Math.min(...xs),mx=Math.max(...xs),k=Math.min(12,Math.max(4,Math.ceil(Math.sqrt(xs.length)))),w=(mx-mn)/k||1,b=new Array(k).fill(0); xs.forEach(x=>b[Math.min(k-1,Math.floor((x-mn)/w))]++); const top=Math.max(...b);
+function hist(xs){ const mn=amin(xs),mx=amax(xs),k=Math.min(12,Math.max(4,Math.ceil(Math.sqrt(xs.length)))),w=(mx-mn)/k||1,b=new Array(k).fill(0); xs.forEach(x=>b[Math.min(k-1,Math.floor((x-mn)/w))]++); const top=Math.max(...b);
   return `<div class="hist">${b.map((n,i)=>`<div style="height:${100*n/top}%" data-tip="${f(mn+i*w,1)} – ${f(mn+(i+1)*w,1)}: ${n}"></div>`).join('')}</div><div class="haxis"><span>${f(mn,1)}</span><span>${f(mx,1)}</span></div>`; }
 const STOP=new Set('في من على الى إلى عن مع هذا هذه ذلك التي الذي ما لا لم لن ان أن إن او أو ثم قد كل كان كانت هو هي هم نحن انا أنا بعد قبل عند حتى اذا إذا بين غير اكثر أكثر جدا جداً و يا the a an and or of to in is are for on with it this that be as at by'.split(' ').map(AR_NORM));
 function words(c){ const m=new Map(); c.raw.forEach(v=>{ if(v==='') return; new Set(AR_NORM(scrub(v)).replace(/[^\p{L}\s]/gu,' ').split(' ').map(w=>w.replace(/^(وال|بال|كال|فال|لل|ال)(?=.{3,})/,''))).forEach(w=>{ if(w.length>2&&!STOP.has(w)) m.set(w,(m.get(w)||0)+1); }); }); return [...m].sort((a,b)=>b[1]-a[1]).slice(0,12); }
@@ -653,17 +654,16 @@ function docReport(){ const a=DA,I=a.ins,today=new Date().toISOString().slice(0,
 P.ins=()=>insightsHTML(A.ins,false); Object.assign(P,PD);
 
 /* ============ rendering & events ============ */
-function showTab(){ TABS.forEach(([k])=>{ const p=$('#p-'+k),t=$('#tab-'+k); if(p) p.hidden=k!==cur; if(t){ t.setAttribute('aria-selected',k===cur); t.tabIndex=k===cur?0:-1; } }); }
+function showTab(){ TABS.forEach(([k])=>{ const p=$('#p-'+k),t=$('#tab-'+k); if(p&&k===cur&&p.dataset.stale){ p.innerHTML=panelHTML(k); delete p.dataset.stale; if(k==='data'&&$('#paste')) $('#paste').value=S.pasted||''; if(k==='rel'&&S.pair&&$('#va')&&$('#va').querySelector(`option[value="${S.pair[0]}"]`)&&$('#vb').querySelector(`option[value="${S.pair[1]}"]`)){ $('#va').value=S.pair[0]; $('#vb').value=S.pair[1]; if(S.hadTest) runTest(); } } if(p) p.hidden=k!==cur; if(t){ t.setAttribute('aria-selected',k===cur); t.tabIndex=k===cur?0:-1; } }); }
 function panelHTML(k){ if(P[k]) return P[k](); const m=MODS.find(x=>x.id===k); return m?modCall(m,'render'):''; }
-function render(){ const act=document.activeElement&&document.activeElement.id, paste=$('#paste')?$('#paste').value:'', hadTest=$('#testOut')&&$('#testOut').innerHTML!=='', doc=S.mode==='doc';
+function render(){ const act=document.activeElement&&document.activeElement.id, paste=$('#paste')?$('#paste').value:(S.pasted||''), doc=S.mode==='doc';
   TABS=tabsFor(doc?'doc':'table'); if(!TABS.some(t=>t[0]===cur)) cur=TABS[0][0];
   const b=$('#banner'); b.hidden=!(doc?D.sample:S.sample); b.textContent=doc?'تعرض الصفحة الآن مستنداً تجريبياً مكتوباً للعرض. حمّل ملفك لتحليل محتواه.':'تعرض الصفحة الآن بيانات تجريبية مولّدة آلياً (242 استجابة افتراضية). حمّل ملفك لتحليل بياناتك.';
   $('#tabs').innerHTML=TABS.map(([k,l])=>`<button role="tab" id="tab-${k}" data-tab="${k}" aria-controls="p-${k}" aria-selected="${k===cur}">${l}</button>`).join('');
-  $('#panels').innerHTML=TABS.map(([k])=>`<section class="panel" role="tabpanel" aria-labelledby="tab-${k}" id="p-${k}"${k===cur?'':' hidden'}>${panelHTML(k)}</section>`).join('');
-  showTab(); if($('#paste')) $('#paste').value=paste;
-  if(!doc&&S.pair&&$('#va')&&S.cols[+S.pair[0]]&&S.cols[+S.pair[1]]&&$('#va').querySelector(`option[value="${S.pair[0]}"]`)&&$('#vb').querySelector(`option[value="${S.pair[1]}"]`)){ $('#va').value=S.pair[0]; $('#vb').value=S.pair[1]; if(hadTest) runTest(); }
+  $('#panels').innerHTML=TABS.map(([k])=>`<section class="panel" role="tabpanel" aria-labelledby="tab-${k}" id="p-${k}" data-stale="1" hidden></section>`).join('');
+  S.pasted=paste; showTab(); if($('#paste')) $('#paste').value=paste;
   if(act){ const e=document.getElementById(act); if(e) e.focus({preventScroll:true}); } }
-function runTest(){ const a=S.cols[+$('#va').value],b=S.cols[+$('#vb').value],o=$('#testOut'); S.pair=[$('#va').value,$('#vb').value]; if(!a||!b||a===b){ o.innerHTML='<p class="muted">اختر متغيرين مختلفين.</p>'; return; }
+function runTest(){ const a=S.cols[+$('#va').value],b=S.cols[+$('#vb').value],o=$('#testOut'); S.pair=[$('#va').value,$('#vb').value]; S.hadTest=true; if(!a||!b||a===b){ o.innerHTML='<p class="muted">اختر متغيرين مختلفين.</p>'; return; }
   const t=testPair(a,b); if(t&&(Number.isNaN(t.p)||Number.isNaN(t.es))){ o.innerHTML='<p class="muted">تعذّر حساب الاختبار: أحد المتغيرين أو إحدى المجموعات بلا تباين.</p>'; return; } if(!t){ o.innerHTML='<p class="muted">لا يمكن اختبار هذا الزوج: نحتاج مجموعتين على الأقل في كل منهما مشاهدتان.</p>'; return; }
   let d=''; if(t.detail&&t.detail.kind==='groups') d=`<div class="scroll"><table><thead><tr><th>المجموعة</th><th class="n">n</th><th class="n">المتوسط</th><th class="n">الوسيط</th><th class="n">الانحراف</th></tr></thead><tbody>${t.detail.rows.sort((x,y)=>y.mean-x.mean).map(r=>`<tr><td>${esc(r.g)}</td><td class="n">${r.n}</td><td class="n">${f(r.mean)}</td><td class="n">${f(r.median)}</td><td class="n">${f(r.sd)}</td></tr>`).join('')}</tbody></table></div>`;
   if(t.detail&&t.detail.kind==='xtab'){ const {R,C,tab}=t.detail; d=`<div class="scroll"><table><thead><tr><th>نسب الصف</th>${C.map(x=>`<th class="n">${esc(x)}</th>`).join('')}<th class="n">n</th></tr></thead><tbody>${R.map((r,i)=>{ const s=tab[i].reduce((p,q)=>p+q,0); return `<tr><td>${esc(r)}</td>${tab[i].map(v=>`<td class="n">${pc(v/s,0)}</td>`).join('')}<td class="n">${s}</td></tr>`; }).join('')}</tbody></table></div>`; }
@@ -726,6 +726,96 @@ document.addEventListener('drop',e=>{ const d=e.target.closest&&e.target.closest
 const tip=$('#tip'); document.addEventListener('mousemove',e=>{ const t=e.target.closest&&e.target.closest('[data-tip]'); if(!t){ tip.hidden=true; return; } tip.textContent=t.dataset.tip; tip.hidden=false; const w=tip.offsetWidth; tip.style.left=Math.max(6,Math.min(innerWidth-w-6,e.clientX-w/2))+'px'; tip.style.top=(e.clientY+16)+'px'; });
 document.addEventListener('keydown',e=>{ const t=e.target.closest&&e.target.closest('[role=tab]'); if(!t||(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')) return; const i=TABS.findIndex(x=>x[0]===cur),j=(i+(e.key==='ArrowLeft'?1:-1)+TABS.length)%TABS.length; cur=TABS[j][0]; showTab(); $('#tab-'+cur).focus(); e.preventDefault(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.id==='dq'){ $('#dqOut').innerHTML=kwic(e.target.value); } });
+/* ---- module: 10-posthoc.js ---- */
+(function(){
+  /* ---------- pure functions (tested against SciPy in tests/posthoc.test.js) ---------- */
+  const med = a => { const s = [...a].sort((x, y) => x - y), n = s.length, h = n >> 1; return n % 2 ? s[h] : (s[h - 1] + s[h]) / 2; };
+
+  // Two-sided p-value of a standard normal statistic, through the regularised incomplete gamma already in ST.
+  const pNorm2 = z => 1 - ST.gammp(.5, z * z / 2);
+
+  // Holm step-down adjustment (controls the family-wise error rate).
+  function holm(ps){
+    const m = ps.length, idx = ps.map((p, i) => [p, i]).sort((a, b) => a[0] - b[0]), adj = new Array(m); let run = 0;
+    idx.forEach(([p, i], k) => { run = Math.max(run, (m - k) * p); adj[i] = Math.min(1, run); });
+    return adj;
+  }
+
+  // Brown–Forsythe form of Levene's test (deviations from the group median); same as scipy.stats.levene(center='median').
+  function levene(gs){
+    const dev = gs.map(g => { const m = med(g); return g.map(x => Math.abs(x - m)); });
+    const r = ST.anova(dev); return { W: r.F, df1: r.df1, df2: r.df2, p: r.p };
+  }
+
+  // Every pair of groups with Welch's t test (no equal-variance assumption), Holm-adjusted.
+  function pairwiseWelch(gs){
+    const out = [];
+    for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++){
+      const w = ST.welch(gs[i], gs[j]); out.push({ i, j, diff: ST.mean(gs[i]) - ST.mean(gs[j]), stat: w.t, df: w.df, p: w.p, d: w.d });
+    }
+    const a = holm(out.map(o => o.p)); out.forEach((o, k) => o.padj = a[k]); return out;
+  }
+
+  // Dunn's test after Kruskal–Wallis: mean-rank differences with the tie correction, Holm-adjusted.
+  function dunn(gs){
+    const all = gs.flat(), N = all.length, { r, ties } = ST.rank(all); let T = 0; for (const t of ties) T += t ** 3 - t;
+    const mr = [], ns = []; let o = 0; for (const g of gs){ let s = 0; for (let i = 0; i < g.length; i++) s += r[o + i]; o += g.length; mr.push(s / g.length); ns.push(g.length); }
+    const v = N * (N + 1) / 12 - T / (12 * (N - 1)), out = [];
+    for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++){
+      const z = (mr[i] - mr[j]) / Math.sqrt(v * (1 / ns[i] + 1 / ns[j])); out.push({ i, j, diff: mr[i] - mr[j], stat: z, p: pNorm2(z) });
+    }
+    const a = holm(out.map(o => o.p)); out.forEach((o, k) => o.padj = a[k]); return out;
+  }
+
+  /* ---------- module UI ---------- */
+  let selG = '', selO = '', out = '';
+  const MAXG = 12;
+  const cats = () => byType('categorical');
+  const outs = () => S.cols.filter(c => c.num && ['numeric', 'scale', 'nps'].includes(c.type));
+  const opts = (cols, cur) => cols.map(c => `<option value="${S.cols.indexOf(c)}"${String(S.cols.indexOf(c)) === cur ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+
+  function run(){
+    const g = S.cols[+selG], o = S.cols[+selO];
+    if (!g || !o) return '<p class="muted">اختر متغير التجميع والمتغير المقاس.</p>';
+    const gp = groups(g, o, 2);
+    if (gp.length < 3) return '<p class="muted">المقارنات البعدية تحتاج ثلاث مجموعات على الأقل، في كل منها مشاهدتان. للمجموعتين استعمل اختبار «العلاقات».</p>';
+    if (gp.length > MAXG) return `<p class="muted">عدد المجموعات ${gp.length} أكبر من ${MAXG}. ادمج الفئات الصغيرة أولاً حتى لا تتضخم المقارنات.</p>`;
+    const names = gp.map(x => x[0]), arr = gp.map(x => x[1]), ord = o.type !== 'numeric';
+    if (arr.some(a => ST.vari(a) === 0) && !ord) return '<p class="muted">إحدى المجموعات بلا تباين، فلا يصلح اختبار ت لويلش.</p>';
+    const lv = levene(arr), res = ord ? dunn(arr) : pairwiseWelch(arr), small = arr.some(a => a.length < 5);
+    const desc = `<div class="scroll"><table><thead><tr><th>المجموعة</th><th class="n">n</th><th class="n">${ord ? 'متوسط الرتب' : 'المتوسط'}</th><th class="n">الوسيط</th><th class="n">الانحراف</th></tr></thead><tbody>${arr.map((a, i) => {
+      let mr = ''; if (ord){ const all = arr.flat(), rk = ST.rank(all).r; let off = 0; for (let k = 0; k < i; k++) off += arr[k].length; let s = 0; for (let k = 0; k < a.length; k++) s += rk[off + k]; mr = s / a.length; }
+      return `<tr><td>${esc(names[i])}</td><td class="n">${a.length}</td><td class="n">${f(ord ? mr : ST.mean(a))}</td><td class="n">${f(med(a))}</td><td class="n">${f(ST.sd(a))}</td></tr>`; }).join('')}</tbody></table></div>`;
+    const rows = res.map(r => `<tr><td>${esc(names[r.i])} ← ${esc(names[r.j])}</td><td class="n">${f(r.diff)}</td><td class="n">${f(r.stat)}</td><td class="n">${pf(r.p)}</td><td class="n">${pf(r.padj)}</td>${ord ? '' : `<td class="n">${f(r.d)}</td>`}<td>${r.padj < .05 ? '<span class="pill ok">دال</span>' : '<span class="pill">غير دال</span>'}</td></tr>`).join('');
+    const nsig = res.filter(r => r.padj < .05).length;
+    return `<p><b>${ord ? 'اختبار دن (Dunn) بعد كروسكال–واليس' : 'مقارنات ثنائية بـ t لويلش'}</b> · ${res.length} مقارنة، بتصحيح هولم</p>
+      <p class="small"><span class="stat">اختبار ليفين (براون–فورسايث): W(${lv.df1}, ${lv.df2}) = ${f(lv.W)}, ${pstr(lv.p)}</span> — ${lv.p < .05 ? 'التباينات غير متجانسة بين المجموعات' + (ord ? '، وقد يعني ذلك اختلاف شكل التوزيعات فيتأثر تفسير دن' : '، وهذا سبب استعمال t لويلش لأنه لا يفترض تساوي التباين') : 'لا دليل على اختلاف التباين بين المجموعات'}.</p>
+      ${desc}
+      <div class="scroll"><table><thead><tr><th>المقارنة</th><th class="n">${ord ? 'فرق متوسط الرتب' : 'فرق المتوسطين'}</th><th class="n">${ord ? 'z' : 't'}</th><th class="n">p</th><th class="n">p بعد هولم</th>${ord ? '' : '<th class="n">d</th>'}<th>الحكم</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p>${nsig ? `بقيت <b class="num">${nsig}</b> من ${res.length} مقارنة دالة عند 5% بعد التصحيح.` : `لم تبقَ أي مقارنة دالة عند 5% بعد التصحيح.`}</p>
+      ${small ? '<p class="small"><span class="pill warn">تنبيه</span> إحدى المجموعات أقل من 5 مشاهدات، فالنتائج غير موثوقة عند هذا الحجم.</p>' : ''}
+      <p class="small muted">هذه مقارنات استكشافية بعد اختبار شامل. هولم يضبط الخطأ من النوع الأول داخل هذه العائلة من المقارنات فقط، لا عبر كل التحليلات في التطبيق.</p>`;
+  }
+
+  addModule({
+    id: 'posthoc', label: 'المقارنات البعدية', after: 'rel',
+    onAnalyze(){ out = ''; if (!S.cols[+selG] || S.cols[+selG].type !== 'categorical') selG = ''; if (!S.cols[+selO] || !S.cols[+selO].num) selO = ''; },
+    render(){
+      const gc = cats(), oc = outs();
+      if (!gc.length || !oc.length) return '<div class="sheet"><h2>المقارنات البعدية</h2><p class="muted">نحتاج عموداً فئوياً وعموداً رقمياً أو مقياساً على الأقل.</p></div>';
+      if (!gc.some(c => String(S.cols.indexOf(c)) === selG)) selG = String(S.cols.indexOf(gc[0]));
+      if (!oc.some(c => String(S.cols.indexOf(c)) === selO)) selO = String(S.cols.indexOf(oc[0]));
+      return `<div class="sheet"><h2>أي المجموعات تختلف عن غيرها؟</h2>
+        <p class="muted small">عندما يكون للمتغير الفئوي ثلاث مجموعات أو أكثر، يخبرك الاختبار الشامل بوجود فرق فقط. هنا نقارن كل زوج على حدة مع تصحيح هولم: t لويلش للمتغير الرقمي، ودن للمقياس الترتيبي، مع اختبار ليفين لتجانس التباين.</p>
+        <div class="row"><select id="posthoc-g" aria-label="متغير التجميع">${opts(gc, selG)}</select><span>→</span><select id="posthoc-o" aria-label="المتغير المقاس">${opts(oc, selO)}</select><button id="posthoc-run" class="btn">قارن</button></div>
+        <div id="posthoc-out">${out}</div></div>`;
+    },
+    click(t){ if (t.id !== 'posthoc-run') return false; out = run(); const el = document.getElementById('posthoc-out'); if (el) el.innerHTML = out; return true; },
+    change(t){ if (t.id === 'posthoc-g'){ selG = t.value; out = ''; const el = document.getElementById('posthoc-out'); if (el) el.innerHTML = ''; return true; }
+      if (t.id === 'posthoc-o'){ selO = t.value; out = ''; const el = document.getElementById('posthoc-out'); if (el) el.innerHTML = ''; return true; } return false; },
+  });
+  if (typeof module !== 'undefined' && module.exports) module.exports = { holm, levene, pairwiseWelch, dunn, pNorm2 };
+})();
 
 sampleData();
 </script>
