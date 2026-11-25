@@ -81,7 +81,8 @@
         <div class="row"><select id="posthoc-g" aria-label="متغير التجميع">${opts(gc, selG)}</select><span>→</span><select id="posthoc-o" aria-label="المتغير المقاس">${opts(oc, selO)}</select><button id="posthoc-run" class="btn">قارن</button></div>
         <div id="posthoc-out">${out}</div></div>`;
     },
-    click(t){ if (t.id !== 'posthoc-run') return false; out = run(); const el = document.getElementById('posthoc-out'); if (el) el.innerHTML = out; return true; },
+    report(){ return out ? `<section><h2>المقارنات البعدية</h2>${out}</section>` : ''; },
+    click(t){ if (t.id !== 'posthoc-run') return false; out = run(); const el = document.getElementById('posthoc-out'); if (el) el.innerHTML = out; const rp = document.getElementById('p-rep'); if (rp) rp.dataset.stale = '1'; return true; },
     change(t){ if (t.id === 'posthoc-g'){ selG = t.value; out = ''; const el = document.getElementById('posthoc-out'); if (el) el.innerHTML = ''; return true; }
       if (t.id === 'posthoc-o'){ selO = t.value; out = ''; const el = document.getElementById('posthoc-out'); if (el) el.innerHTML = ''; return true; } return false; },
   });

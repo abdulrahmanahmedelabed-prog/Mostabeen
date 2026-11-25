@@ -454,6 +454,7 @@ function report(){ const c=A.comp,q=A.q,sig=A.scan.filter(r=>r.padj<.05),prob=S.
   <section><h2>الفروق الدالة</h2>${sig.length?scanTable(sig.slice(0,15)):`<p>لم تبقَ أي مقارنة دالة بعد التصحيح (${A.scan.length} مقارنة).</p>`}</section>
   <section><h2>خصائص المجيبين</h2><div class="grid2">${A.cats.slice(0,6).map(x=>{ const m=new Map(); x.raw.forEach(v=>{ if(v!=='') m.set(v,(m.get(v)||0)+1); }); const p=[...m].sort((a,b)=>b[1]-a[1]),t=p.reduce((a,b)=>a+b[1],0); return `<div><h3>${esc(x.name)}</h3>${barList(p.slice(0,10),t)}</div>`; }).join('')}</div></section>
   <section><h2>الامتثال وحماية البيانات</h2><p>الجاهزية <b>${c.pass} من ${c.total}</b></p><div class="scroll"><table><tbody>${c.auto.map(x=>`<tr><td style="white-space:nowrap">${pill(x.s)}</td><td><b>${x.t}</b> — <span class="small">${esc(x.d)}</span></td></tr>`).join('')}${MANUAL.map(m=>`<tr><td style="white-space:nowrap">${pill(S.checks[m.id]?'ok':'warn')}</td><td>${m.t} <span class="muted small">(${m.r})</span></td></tr>`).join('')}</tbody></table></div><p class="muted small">قائمة استرشادية وليست شهادة امتثال أو رأياً قانونياً.</p></section>
+  ${MODS.map(m=>modCall(m,'report')).filter(x=>typeof x==='string'&&x).join('')}
   <section><h2>حدود التحليل</h2><ul class="clean">${lim.map(l=>`<li>${l}</li>`).join('')}</ul></section>`; }
 
 /* ============ assessment: strengths, weaknesses, defects, actions (rule-based, every line cites its evidence) ============ */
