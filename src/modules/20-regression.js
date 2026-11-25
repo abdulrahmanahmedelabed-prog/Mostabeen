@@ -106,5 +106,6 @@
       if (t.dataset && t.dataset.regression != null){ t.checked ? selX.add(t.dataset.regression) : selX.delete(t.dataset.regression); clear(); return true; }
       return false; },
   });
+  (globalThis.__mostabeen = globalThis.__mostabeen || {}).inv = inv; globalThis.__mostabeen.design = design;   // shared with 30-logistic.js
   if (typeof module !== 'undefined' && module.exports) module.exports = { inv, ols, vifs };
 })();
